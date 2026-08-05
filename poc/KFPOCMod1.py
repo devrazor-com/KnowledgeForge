@@ -62,7 +62,7 @@ TARGET_ENVIRONMENT = "larkspur-sandbox"
 TIMEOUT_SECONDS = 1800
 PERMITTED_CAPABILITIES = ["filesystem", "shell", "billing", "database-read"]
 
-VALID_OUTCOMES = {"random", "success", "knowledge_gap", "technical_failure"}
+VALID_OUTCOMES = {"random", "success", "check_failure", "knowledge_gap", "technical_failure"}
 TERMINAL_EVENTS = {"completed", "failed", "cancelled"}
 
 # --------------------------------------------------------------------------
@@ -694,6 +694,7 @@ PAGE = r"""<!doctype html>
         <select id="outcome">
           <option value="random">Random</option>
           <option value="success">Success</option>
+          <option value="check_failure">Check failure</option>
           <option value="knowledge_gap">Knowledge gap</option>
           <option value="technical_failure">Technical failure</option>
         </select>

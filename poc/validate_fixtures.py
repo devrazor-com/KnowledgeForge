@@ -106,13 +106,14 @@ def main() -> int:
         ok &= report(p.name, schema_errors(task_v, inst))
 
     print("\nValidationResult fixtures  (validation-result.schema.json)")
-    for name in ("result-success.json", "result-knowledge-gap.json", "result-technical-failure.json"):
-        inst = json.loads((FIX / "results" / name).read_text(encoding="utf-8"))
-        ok &= report(name, schema_errors(result_v, inst))
+    for p in sorted((FIX / "results").glob("result-*.json")):
+        inst = json.loads(p.read_text(encoding="utf-8"))
+        ok &= report(p.name, schema_errors(result_v, inst))
 
     print("\nExecutionEvent sequences  (execution-event.schema.json + contract sanity)")
-    for name in ("events-success.json", "events-knowledge-gap.json", "events-technical-failure.json"):
-        events = json.loads((FIX / "results" / name).read_text(encoding="utf-8"))
+    for p in sorted((FIX / "results").glob("events-*.json")):
+        name = p.name
+        events = json.loads(p.read_text(encoding="utf-8"))
         errs = []
         for i, ev in enumerate(events):
             errs += [f"event[{i}] {m}" for m in schema_errors(event_v, ev)]
