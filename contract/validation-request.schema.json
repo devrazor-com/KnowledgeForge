@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-request.schema.json",
+  "title": "ValidationRequest",
+  "description": "Sent by Module 1 to Module 3 to start one validation run.",
+  "type": "object",
+  "required": ["contract_version", "run_id", "package", "task", "execution_context", "permitted_capabilities"],
+  "additionalProperties": false,
+  "properties": {
+    "contract_version": { "type": "string", "const": "0.1" },
+    "run_id": { "type": "string", "minLength": 1 },
+    "package": { "$ref": "#/$defs/KnowledgePackage" },
+    "task": { "$ref": "#/$defs/ValidationTask" },
+    "execution_context": { "$ref": "#/$defs/ExecutionContext" },
+    "permitted_capabilities": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "KnowledgePackage": {
+      "type": "object",
+      "required": ["name", "version", "main_file", "files", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "main_file": { "type": "string", "description": "Relative path, must appear in files." },
+        "files": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/KnowledgeFile" } },
+        "metadata": { "type": "object" },
+        "fingerprint": { "type": "string" }
+      }
+    },
+    "KnowledgeFile": {
+      "type": "object",
+      "required": ["path", "content"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "pattern": "^[^/\\\\][^\\\\]*$", "description": "Relative and normalised. No leading slash, no '..' segments." },
+        "content": { "type": "string" }
+      }
+    },
+    "ValidationTask": {
+      "type": "object",
+      "required": ["id", "title", "description", "fingerprint"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string", "description": "The task as it would be handed to an engineer." },
+        "business_area": { "type": "string" },
+        "difficulty": { "type": "string" },
+        "acceptance_criteria": { "type": "string", "description": "Prose, for the human reviewer. Not machine-evaluated." },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/Check" } },
+        "metadata": { "type": "object" },
+        "fingerprint": { "type": "string" }
+      }
+    },
+    "Check": {
+      "type": "object",
+      "required": ["id", "description", "command"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string" },
+        "description": { "type": "string" },
+        "command": { "type": "string", "description": "Run in the execution environment after the agent finishes. Exit code 0 means passed." }
+      }
+    },
+    "ExecutionContext": {
+      "type": "object",
+      "required": ["target_environment", "timeout_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "target_environment": { "type": "string", "description": "Logical name only. Module 3 resolves it; Module 1 never knows what it means." },
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "additional_instructions": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

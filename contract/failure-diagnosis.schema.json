@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "failure-diagnosis.schema.json",
+  "title": "FailureDiagnosis",
+  "description": "Module 3's normalised explanation of what went wrong. Advisory only; it never determines the outcome.",
+  "type": "object",
+  "required": ["category", "explanation", "confidence"],
+  "additionalProperties": false,
+  "properties": {
+    "category": {
+      "type": "string",
+      "enum": [
+        "incomplete_documentation", "ambiguous_documentation", "missing_technical_mapping",
+        "task_issue",
+        "mcp_failure", "connector_failure", "backend_failure", "authentication_failure",
+        "authorization_failure", "network_failure", "environment_unavailable",
+        "claude_failure", "timeout",
+        "mixed", "unknown"
+      ]
+    },
+    "explanation": { "type": "string", "description": "Plain language, for a developer or architect." },
+    "technical_details": { "type": "string" },
+    "recommendations": { "type": "array", "items": { "type": "string" }, "description": "Phrased as changes to the package, not to the code." },
+    "confidence": { "type": "string", "enum": ["low", "medium", "high"] },
+    "evidence_references": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Required in practice for the three knowledge-related categories: point at specific package files or artifacts."
+    }
+  }
+}

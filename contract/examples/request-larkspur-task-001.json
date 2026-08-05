@@ -1,0 +1,37 @@
+{
+  "contract_version": "0.1",
+  "run_id": "run-2026-08-05-0007",
+  "package": {
+    "name": "Larkspur",
+    "version": "1.4",
+    "main_file": "larkspur-index.md",
+    "files": [
+      { "path": "larkspur-index.md", "content": "# Larkspur domain\n..." },
+      { "path": "rules/plan-rules.md", "content": "## Plan and entitlement rules\n..." },
+      { "path": "data/account-model.md", "content": "## Account and subscription model\n..." },
+      { "path": "data/billing-ledger.md", "content": "## Billing ledger\n..." }
+    ],
+    "metadata": { "owner": "Larkspur SME group", "reviewed": "2026-08-01" },
+    "fingerprint": "pkg:7b3e0a12"
+  },
+  "task": {
+    "id": "LARK-TASK-001",
+    "title": "Bill for a new priority_support entitlement",
+    "description": "Add a billable entitlement 'priority_support' to Larkspur, active on business-tier subscriptions, and ensure it appears as a priced line on the next invoice, following the standards in the knowledge package.",
+    "business_area": "Larkspur",
+    "difficulty": "medium",
+    "acceptance_criteria": "The entitlement exists, is active on business-tier subscriptions, and produces exactly one correctly-priced invoice line per cycle, consistent with comparable billable entitlements.",
+    "checks": [
+      { "id": "CHK-MIGRATE", "description": "Subscription and ratecard migrations apply", "command": "make migrate-larkspur" },
+      { "id": "CHK-TESTS", "description": "Billing regression suite passes", "command": "make test-billing" }
+    ],
+    "metadata": {},
+    "fingerprint": "task:5c1d90f4"
+  },
+  "execution_context": {
+    "target_environment": "larkspur-sandbox",
+    "timeout_seconds": 1800,
+    "additional_instructions": null
+  },
+  "permitted_capabilities": ["filesystem", "shell", "billing", "database-read"]
+}

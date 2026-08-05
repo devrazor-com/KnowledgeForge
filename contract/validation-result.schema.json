@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "validation-result.schema.json",
+  "title": "ValidationResult",
+  "description": "Returned by Module 3 to Module 1 once a run reaches a terminal state. Carries no validation outcome - Module 1 derives that.",
+  "type": "object",
+  "required": ["run_id", "status", "summary", "check_results", "artifacts", "duration_seconds"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["completed", "failed", "cancelled"],
+      "description": "Describes the run, not the engineering work. 'completed' means execution finished normally; it does not imply the task succeeded."
+    },
+    "summary": { "type": "string" },
+    "check_results": { "type": "array", "items": { "$ref": "#/$defs/CheckResult" } },
+    "diagnosis": { "oneOf": [{ "$ref": "failure-diagnosis.schema.json" }, { "type": "null" }] },
+    "artifacts": { "type": "array", "items": { "type": "string" }, "description": "Diffs, logs, the agent transcript, check output." },
+    "duration_seconds": { "type": "number", "minimum": 0 }
+  },
+  "$defs": {
+    "CheckResult": {
+      "type": "object",
+      "required": ["check_id", "passed", "exit_code"],
+      "additionalProperties": false,
+      "properties": {
+        "check_id": { "type": "string" },
+        "passed": { "type": "boolean" },
+        "exit_code": { "type": ["integer", "null"], "description": "Null if the check could not be run at all." },
+        "output": { "type": "string" }
+      }
+    }
+  }
+}

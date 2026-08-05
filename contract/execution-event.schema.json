@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "execution-event.schema.json",
+  "title": "ExecutionEvent",
+  "description": "Streamed by Module 3 to Module 1 while a run is in flight.",
+  "type": "object",
+  "required": ["run_id", "sequence", "timestamp", "event_type", "message"],
+  "additionalProperties": false,
+  "properties": {
+    "run_id": { "type": "string" },
+    "sequence": { "type": "integer", "minimum": 1, "description": "Starts at 1, increases by one, unique per run." },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "event_type": {
+      "type": "string",
+      "enum": ["accepted", "started", "progress", "tool_call", "check", "warning", "completed", "failed", "cancelled"]
+    },
+    "message": { "type": "string", "description": "Readable by a developer without opening the transcript." },
+    "details": { "type": ["object", "null"], "description": "Free-form technical detail." }
+  }
+}

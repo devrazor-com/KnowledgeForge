@@ -1,0 +1,13 @@
+{
+  "run_id": "run-2026-08-05-0014",
+  "status": "failed",
+  "summary": "Run aborted: billing connector authentication failed.",
+  "check_results": [],
+  "diagnosis": {
+    "category": "authentication_failure",
+    "explanation": "The billing connector rejected the credentials from the execution environment. The knowledge package was never exercised.",
+    "confidence": "high"
+  },
+  "artifacts": ["gateway.log"],
+  "duration_seconds": 8.2
+}

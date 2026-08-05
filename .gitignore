@@ -1,0 +1,12 @@
+# OS cruft
+.DS_Store
+
+# Local working documents — not published to the public repo.
+# (Internal drafts and the Claude Code brief; add them explicitly if you want them tracked.)
+*.docx
+KnowledgeForge-POC-Claude-Code-Brief.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/

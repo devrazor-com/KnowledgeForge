@@ -1,0 +1,12 @@
+{
+  "run_id": "run-2026-08-05-0007",
+  "status": "completed",
+  "summary": "Entitlement added and granted on the business tier; invoice-line generation updated.",
+  "check_results": [
+    { "check_id": "CHK-MIGRATE", "passed": true, "exit_code": 0, "output": "..." },
+    { "check_id": "CHK-TESTS", "passed": true, "exit_code": 0, "output": "..." }
+  ],
+  "diagnosis": null,
+  "artifacts": ["diff.patch", "migrate.log", "test.log", "transcript.log"],
+  "duration_seconds": 612.8
+}
