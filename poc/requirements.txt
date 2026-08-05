@@ -1,0 +1,4 @@
+# KnowledgeForge Module 2 contract POC — throwaway. Standard library plus these.
+fastapi>=0.110
+uvicorn>=0.29
+jsonschema>=4.21

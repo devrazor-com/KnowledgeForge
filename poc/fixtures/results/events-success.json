@@ -1,0 +1,11 @@
+[
+  { "run_id": "run-larkspur-success-0001", "sequence": 1, "timestamp": "2026-08-05T14:00:01Z", "event_type": "accepted", "message": "Validation request accepted" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 2, "timestamp": "2026-08-05T14:00:03Z", "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 3, "timestamp": "2026-08-05T14:00:07Z", "event_type": "progress", "message": "Knowledge package loaded (4 files)" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 4, "timestamp": "2026-08-05T14:00:12Z", "event_type": "tool_call", "message": "Read data/account-model.md" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 5, "timestamp": "2026-08-05T14:00:18Z", "event_type": "tool_call", "message": "Read data/billing-ledger.md" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 6, "timestamp": "2026-08-05T14:00:41Z", "event_type": "tool_call", "message": "Added priority_support to entitlement_flags and a matching ratecard entry" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 7, "timestamp": "2026-08-05T14:01:05Z", "event_type": "check", "message": "CHK-MIGRATE passed (exit 0)" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 8, "timestamp": "2026-08-05T14:01:52Z", "event_type": "check", "message": "CHK-TESTS passed (exit 0)" },
+  { "run_id": "run-larkspur-success-0001", "sequence": 9, "timestamp": "2026-08-05T14:01:56Z", "event_type": "completed", "message": "Execution finished" }
+]

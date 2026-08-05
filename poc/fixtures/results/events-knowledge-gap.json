@@ -1,0 +1,9 @@
+[
+  { "run_id": "run-larkspur-gap-0001", "sequence": 1, "timestamp": "2026-08-05T15:10:00Z", "event_type": "accepted", "message": "Validation request accepted" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 2, "timestamp": "2026-08-05T15:10:02Z", "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 3, "timestamp": "2026-08-05T15:10:06Z", "event_type": "progress", "message": "Knowledge package loaded (4 files)" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 4, "timestamp": "2026-08-05T15:10:11Z", "event_type": "tool_call", "message": "Read data/account-model.md" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 5, "timestamp": "2026-08-05T15:10:19Z", "event_type": "tool_call", "message": "Read data/billing-ledger.md" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 6, "timestamp": "2026-08-05T15:10:34Z", "event_type": "warning", "message": "No documented link between subscription entitlement_flags and ratecard invoice lines" },
+  { "run_id": "run-larkspur-gap-0001", "sequence": 7, "timestamp": "2026-08-05T15:10:38Z", "event_type": "completed", "message": "Execution finished: agent stopped, unresolved knowledge gap" }
+]

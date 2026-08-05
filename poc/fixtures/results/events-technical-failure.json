@@ -1,0 +1,5 @@
+[
+  { "run_id": "run-larkspur-fail-0001", "sequence": 1, "timestamp": "2026-08-05T16:20:00Z", "event_type": "accepted", "message": "Validation request accepted" },
+  { "run_id": "run-larkspur-fail-0001", "sequence": 2, "timestamp": "2026-08-05T16:20:02Z", "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "run_id": "run-larkspur-fail-0001", "sequence": 3, "timestamp": "2026-08-05T16:20:09Z", "event_type": "failed", "message": "Run aborted: billing connector authentication failed" }
+]

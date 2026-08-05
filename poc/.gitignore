@@ -1,0 +1,5 @@
+# POC — never commit the virtualenv or caches
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
