@@ -1,0 +1,9 @@
+# Production Workbench — never commit the virtualenv, caches, or the local DB.
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+# Local run state only — anchored so it does NOT match example package data/ folders.
+/data/
+*.db
+*.sqlite3

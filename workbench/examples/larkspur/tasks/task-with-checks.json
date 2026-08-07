@@ -1,0 +1,13 @@
+{
+  "id": "LARK-TASK-001",
+  "title": "Bill for a new priority_support entitlement",
+  "description": "Add a billable entitlement `priority_support` to Larkspur. Business-tier subscriptions should have it active, and it must appear as a priced line on the next invoice, following the standards in the knowledge package.",
+  "business_area": "Larkspur / Billing",
+  "difficulty": "medium",
+  "acceptance_criteria": "The `priority_support` entitlement exists, is active on business-tier subscriptions, and produces exactly one correctly-priced invoice line per billing cycle, consistent with how comparable billable entitlements are handled.",
+  "checks": [
+    { "id": "CHK-MIGRATE", "description": "Subscription and ratecard migrations apply cleanly", "command": "make migrate-larkspur" },
+    { "id": "CHK-TESTS", "description": "Billing regression suite passes", "command": "make test-billing" }
+  ],
+  "metadata": { "author": "Larkspur SME group" }
+}

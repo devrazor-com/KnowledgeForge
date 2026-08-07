@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}KnowledgeForge — Validation Workbench{% endblock %}</title>
+  <link rel="stylesheet" href="/static/app.css"/>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <a class="brand" href="/">KnowledgeForge · Validation Workbench</a>
+      <span class="tagline">Module 1 — production</span>
+    </div>
+  </header>
+  <main class="wrap">
+    {% block breadcrumb %}{% endblock %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

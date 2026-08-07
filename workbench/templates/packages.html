@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Packages · Validation Workbench{% endblock %}
+{% block content %}
+  <h1>Knowledge packages</h1>
+  <p class="sub">Each package is a folder of synthetic Markdown. Selecting one assembles it —
+     discovers its documents, orders them deterministically, and fingerprints the result.</p>
+
+  {% if not rows %}
+    <div class="empty">No packages found under <code>workbench/examples/</code>.</div>
+  {% else %}
+  <table class="grid">
+    <thead>
+      <tr><th>Package</th><th>Version</th><th>Files</th><th>Tasks</th><th>Discovery</th><th>Fingerprint</th></tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a href="/packages/{{ r.dir_name }}"><strong>{{ r.name }}</strong></a>
+            <div class="muted">{{ r.dir_name }}/</div></td>
+        <td>{{ r.version }}</td>
+        <td>{{ r.file_count }}</td>
+        <td>{{ r.task_count }}</td>
+        <td>{% if r.problem_count %}<span class="badge warn">{{ r.problem_count }} problem(s)</span>
+            {% else %}<span class="badge ok">clean</span>{% endif %}</td>
+        <td class="fp">{{ r.fingerprint }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+{% endblock %}

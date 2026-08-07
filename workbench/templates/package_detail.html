@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}{{ package.name }} · Validation Workbench{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › {{ package.name }}</div>{% endblock %}
+{% block content %}
+  <h1>{{ package.name }} <span class="ver">v{{ package.version }}</span></h1>
+  <p class="sub">Assembled from <code>{{ assembly.dir_name }}/{{ package.main_file }}</code>.
+     {% if newly_stored %}<span class="badge ok">snapshot stored</span>
+     {% else %}<span class="badge muted-badge">snapshot already on record</span>{% endif %}</p>
+
+  <section class="card">
+    <h2>Package fingerprint</h2>
+    <div class="fp big">{{ package.fingerprint }}</div>
+    <p class="muted">Deterministic over the ordered (path, content) sequence below. Identical
+       input produces this exact value on any machine.</p>
+    {% if package.metadata %}
+      <h3>Metadata (from front matter)</h3>
+      <table class="kv">
+        {% for k, v in package.metadata.items() %}<tr><td>{{ k }}</td><td>{{ v }}</td></tr>{% endfor %}
+      </table>
+    {% endif %}
+  </section>
+
+  {% if assembly.problems %}
+  <section class="card problems">
+    <h2>Discovery problems ({{ assembly.problems|length }})</h2>
+    <p class="muted">Reported, not skipped. Assembly continued with whatever resolved.</p>
+    <ul>
+      {% for p in assembly.problems %}
+        <li><span class="badge warn">{{ p.kind }}</span> {{ p.detail }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Assembled files <span class="muted">({{ package.files|length }}, in order)</span></h2>
+    <table class="grid">
+      <thead><tr><th>#</th><th>Path</th><th>Characters</th></tr></thead>
+      <tbody>
+        {% for f in package.files %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td class="fp">{{ f.path }}{% if f.path == package.main_file %} <span class="badge muted-badge">index</span>{% endif %}</td>
+          <td>{{ f.content|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Tasks <span class="muted">({{ tasks|length }})</span></h2>
+    {% if not tasks %}
+      <div class="empty">No tasks in <code>{{ assembly.dir_name }}/tasks/</code>.</div>
+    {% else %}
+    <table class="grid">
+      <thead><tr><th>Task</th><th>Checks</th><th>Active</th><th>Fingerprint</th></tr></thead>
+      <tbody>
+        {% for t in tasks %}
+        <tr id="task-{{ t.id }}">
+          <td><strong>{{ t.id }}</strong> — {{ t.title }}
+              <div class="muted">{{ t.business_area or "—" }} · {{ t.difficulty or "—" }}</div></td>
+          <td>{{ t.checks|length }}</td>
+          <td>
+            {% if t.active %}<span class="badge ok">active</span>{% else %}<span class="badge muted-badge">inactive</span>{% endif %}
+            <form method="post" action="/packages/{{ assembly.dir_name }}/tasks/{{ t.id }}/toggle" class="inline">
+              <button type="submit" class="link-btn">{% if t.active %}deactivate{% else %}activate{% endif %}</button>
+            </form>
+          </td>
+          <td class="fp">{{ t.fingerprint }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted">Only active tasks will count toward approval (later step). Toggling active
+       state does not change a task's fingerprint.</p>
+    {% endif %}
+  </section>
+{% endblock %}

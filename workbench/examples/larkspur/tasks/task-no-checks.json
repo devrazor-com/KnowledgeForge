@@ -1,0 +1,10 @@
+{
+  "id": "LARK-TASK-002",
+  "title": "Add a grace period to plan definitions",
+  "description": "Add a `grace_period_days` attribute to each plan definition, defaulting to 0, describing how many days a subscription stays active past renews_at before suspension. Wire it into the plan catalogue following the package conventions.",
+  "business_area": "Larkspur / Plans",
+  "difficulty": "easy",
+  "acceptance_criteria": "Every plan definition carries a `grace_period_days` integer with a sensible default, exposed consistently with the other plan attributes.",
+  "checks": [],
+  "metadata": { "author": "Larkspur SME group" }
+}
