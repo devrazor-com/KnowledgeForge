@@ -1,0 +1,9 @@
+[
+  { "event_type": "accepted", "message": "Validation request accepted" },
+  { "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "event_type": "progress", "message": "Knowledge package loaded (4 files)" },
+  { "event_type": "tool_call", "message": "Read data/account-model.md" },
+  { "event_type": "tool_call", "message": "Read data/billing-ledger.md" },
+  { "event_type": "warning", "message": "No documented link between subscription entitlement_flags and ratecard invoice lines" },
+  { "event_type": "completed", "message": "Execution finished: agent stopped, unresolved knowledge gap" }
+]

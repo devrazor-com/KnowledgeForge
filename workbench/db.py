@@ -1,12 +1,10 @@
-"""SQLite foundation — the Step 1 slice of persistence.
+"""SQLite persistence.
 
-Tables here cover immutable package snapshots (PKG-8), immutable task records,
-and mutable per-task active state (TSK-5). Run, event, resolution, and approval
-tables arrive in later steps; they are deliberately absent now.
+Step 1 tables: immutable package snapshots + task records, mutable task_state.
+Step 2A adds run and run_event: a run row that grows until terminal then is
+frozen, and an append-only event log that powers live streaming and replay.
 
-A run is immutable once terminal — that rule shapes the later schema, not this one,
-but the principle starts here: snapshots and task records are write-once, keyed by
-their fingerprint.
+Runs are immutable once terminal. Resolution and approval tables arrive later.
 """
 
 from __future__ import annotations
@@ -15,43 +13,46 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 
-from workbench.config import DATA_DIR, DB_PATH, DEFAULT_TASK_ACTIVE
+from workbench import config
 from workbench.models import Assembly, Task
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS package_snapshot (
     package_fingerprint TEXT PRIMARY KEY,
-    dir_name            TEXT NOT NULL,
-    name                TEXT NOT NULL,
-    version             TEXT NOT NULL,
-    metadata_json       TEXT NOT NULL,
-    main_file           TEXT NOT NULL,
-    created_at          TEXT NOT NULL
+    dir_name TEXT NOT NULL, name TEXT NOT NULL, version TEXT NOT NULL,
+    metadata_json TEXT NOT NULL, main_file TEXT NOT NULL, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS package_file (
-    package_fingerprint TEXT NOT NULL,
-    ordinal             INTEGER NOT NULL,
-    path                TEXT NOT NULL,
-    content             TEXT NOT NULL,
+    package_fingerprint TEXT NOT NULL, ordinal INTEGER NOT NULL,
+    path TEXT NOT NULL, content TEXT NOT NULL,
     PRIMARY KEY (package_fingerprint, path)
 );
 CREATE TABLE IF NOT EXISTS task (
-    task_fingerprint    TEXT PRIMARY KEY,
-    package_name        TEXT NOT NULL,
-    task_id             TEXT NOT NULL,
-    title               TEXT NOT NULL,
-    description         TEXT NOT NULL,
-    business_area       TEXT,
-    difficulty          TEXT,
-    acceptance_criteria TEXT,
-    checks_json         TEXT NOT NULL
+    task_fingerprint TEXT PRIMARY KEY, package_name TEXT NOT NULL, task_id TEXT NOT NULL,
+    title TEXT NOT NULL, description TEXT NOT NULL, business_area TEXT, difficulty TEXT,
+    acceptance_criteria TEXT, checks_json TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS task_state (
-    package_name TEXT NOT NULL,
-    task_id      TEXT NOT NULL,
-    active       INTEGER NOT NULL,
-    updated_at   TEXT NOT NULL,
+    package_name TEXT NOT NULL, task_id TEXT NOT NULL,
+    active INTEGER NOT NULL, updated_at TEXT NOT NULL,
     PRIMARY KEY (package_name, task_id)
+);
+CREATE TABLE IF NOT EXISTS run (
+    run_id TEXT PRIMARY KEY,
+    package_name TEXT NOT NULL, package_fingerprint TEXT NOT NULL,
+    task_id TEXT NOT NULL, task_fingerprint TEXT NOT NULL,
+    capabilities_json TEXT NOT NULL, target_environment TEXT NOT NULL,
+    request_json TEXT NOT NULL, request_validation_json TEXT NOT NULL,
+    run_state TEXT NOT NULL,
+    gateway_ack_json TEXT, gateway_result_json TEXT, contract_status TEXT, outcome TEXT,
+    verdict_json TEXT, result_json TEXT, result_validation_json TEXT,
+    error TEXT, created_at TEXT NOT NULL, terminal_at TEXT
+);
+CREATE TABLE IF NOT EXISTS run_event (
+    run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+    timestamp TEXT NOT NULL, event_type TEXT NOT NULL, message TEXT NOT NULL,
+    event_json TEXT NOT NULL, m1_validation_json TEXT NOT NULL, received_at TEXT NOT NULL,
+    PRIMARY KEY (run_id, sequence)
 );
 """
 
@@ -61,83 +62,138 @@ def _now() -> str:
 
 
 def _connect() -> sqlite3.Connection:
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(config.db_path(), timeout=5.0)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA busy_timeout=5000")
     return con
 
 
 def init() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     with _connect() as con:
+        con.execute("PRAGMA journal_mode=WAL")
         con.executescript(_SCHEMA)
 
 
+# --------------------------------------------------------------------------
+# Packages and tasks (Step 1)
+# --------------------------------------------------------------------------
+
 def save_snapshot(assembly: Assembly) -> bool:
-    """Store an assembled snapshot immutably. Returns True if newly stored, False
-    if this exact fingerprint was already on record (identical input, identical id)."""
     pkg = assembly.package
     with _connect() as con:
-        exists = con.execute(
-            "SELECT 1 FROM package_snapshot WHERE package_fingerprint = ?",
-            (pkg.fingerprint,),
-        ).fetchone()
-        if exists:
+        if con.execute("SELECT 1 FROM package_snapshot WHERE package_fingerprint=?",
+                       (pkg.fingerprint,)).fetchone():
             return False
         con.execute(
-            "INSERT INTO package_snapshot "
-            "(package_fingerprint, dir_name, name, version, metadata_json, main_file, created_at) "
-            "VALUES (?,?,?,?,?,?,?)",
+            "INSERT INTO package_snapshot (package_fingerprint, dir_name, name, version, "
+            "metadata_json, main_file, created_at) VALUES (?,?,?,?,?,?,?)",
             (pkg.fingerprint, assembly.dir_name, pkg.name, pkg.version,
-             json.dumps(pkg.metadata), pkg.main_file, _now()),
-        )
+             json.dumps(pkg.metadata), pkg.main_file, _now()))
         con.executemany(
             "INSERT INTO package_file (package_fingerprint, ordinal, path, content) VALUES (?,?,?,?)",
-            [(pkg.fingerprint, i, f.path, f.content) for i, f in enumerate(pkg.files)],
-        )
+            [(pkg.fingerprint, i, f.path, f.content) for i, f in enumerate(pkg.files)])
         return True
 
 
 def save_task(package_name: str, task: Task) -> None:
-    """Record a task immutably by fingerprint (INSERT OR IGNORE — same content,
-    same identity)."""
     with _connect() as con:
         con.execute(
-            "INSERT OR IGNORE INTO task "
-            "(task_fingerprint, package_name, task_id, title, description, "
-            " business_area, difficulty, acceptance_criteria, checks_json) "
+            "INSERT OR IGNORE INTO task (task_fingerprint, package_name, task_id, title, "
+            "description, business_area, difficulty, acceptance_criteria, checks_json) "
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (task.fingerprint, package_name, task.id, task.title, task.description,
-             task.business_area, task.difficulty, task.acceptance_criteria,
-             json.dumps(task.checks)),
-        )
+             task.business_area, task.difficulty, task.acceptance_criteria, json.dumps(task.checks)))
 
 
 def get_active(package_name: str, task_id: str) -> bool:
     with _connect() as con:
-        row = con.execute(
-            "SELECT active FROM task_state WHERE package_name = ? AND task_id = ?",
-            (package_name, task_id),
-        ).fetchone()
-    if row is None:
-        return DEFAULT_TASK_ACTIVE
-    return bool(row["active"])
+        row = con.execute("SELECT active FROM task_state WHERE package_name=? AND task_id=?",
+                          (package_name, task_id)).fetchone()
+    return config.DEFAULT_TASK_ACTIVE if row is None else bool(row["active"])
 
 
 def set_active(package_name: str, task_id: str, active: bool) -> None:
     with _connect() as con:
         con.execute(
-            "INSERT INTO task_state (package_name, task_id, active, updated_at) "
-            "VALUES (?,?,?,?) "
-            "ON CONFLICT(package_name, task_id) DO UPDATE SET active = excluded.active, "
-            "updated_at = excluded.updated_at",
-            (package_name, task_id, 1 if active else 0, _now()),
-        )
+            "INSERT INTO task_state (package_name, task_id, active, updated_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(package_name, task_id) DO UPDATE SET active=excluded.active, "
+            "updated_at=excluded.updated_at",
+            (package_name, task_id, 1 if active else 0, _now()))
 
 
-def snapshot_count(package_fingerprint: str) -> int:
+# --------------------------------------------------------------------------
+# Runs (Step 2A)
+# --------------------------------------------------------------------------
+
+def create_run(run: dict) -> None:
     with _connect() as con:
-        row = con.execute(
-            "SELECT COUNT(*) AS n FROM package_snapshot WHERE package_fingerprint = ?",
-            (package_fingerprint,),
-        ).fetchone()
-    return int(row["n"])
+        con.execute(
+            "INSERT INTO run (run_id, package_name, package_fingerprint, task_id, task_fingerprint, "
+            "capabilities_json, target_environment, request_json, request_validation_json, run_state, "
+            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (run["run_id"], run["package_name"], run["package_fingerprint"], run["task_id"],
+             run["task_fingerprint"], json.dumps(run["capabilities"]), run["target_environment"],
+             json.dumps(run["request"]), json.dumps(run["request_validation"]),
+             run["run_state"], _now()))
+
+
+def set_run_running(run_id: str, gateway_ack: dict | None) -> None:
+    with _connect() as con:
+        con.execute("UPDATE run SET run_state='running', gateway_ack_json=? WHERE run_id=?",
+                    (json.dumps(gateway_ack) if gateway_ack is not None else None, run_id))
+
+
+def set_run_error(run_id: str, error: str) -> None:
+    """Record a run that could not proceed. Minimal safety only — the readable
+    Step 2B error states are not built here; this exists so a failure never
+    corrupts data or hangs the app."""
+    with _connect() as con:
+        con.execute("UPDATE run SET run_state='error', error=?, terminal_at=? WHERE run_id=?",
+                    (error, _now(), run_id))
+
+
+def last_sequence(run_id: str) -> int:
+    with _connect() as con:
+        row = con.execute("SELECT MAX(sequence) AS s FROM run_event WHERE run_id=?", (run_id,)).fetchone()
+    return int(row["s"]) if row and row["s"] is not None else 0
+
+
+def append_event(run_id: str, event: dict, m1_validation: dict) -> bool:
+    """Append one received event. Idempotent on (run_id, sequence)."""
+    with _connect() as con:
+        cur = con.execute(
+            "INSERT OR IGNORE INTO run_event (run_id, sequence, timestamp, event_type, message, "
+            "event_json, m1_validation_json, received_at) VALUES (?,?,?,?,?,?,?,?)",
+            (run_id, event["sequence"], event["timestamp"], event["event_type"], event["message"],
+             json.dumps(event), json.dumps(m1_validation), _now()))
+        return cur.rowcount > 0
+
+
+def finalize_run(run_id: str, result: dict, result_validation: dict, verdict: dict,
+                 gateway_result: dict | None = None) -> None:
+    """Freeze a run as terminal. `gateway_result` is the mock's out-of-band result
+    envelope (its own validation signal), stored for display and clearly labelled
+    as mock-only in the UI; Module 1 never treats its absence as a failure."""
+    with _connect() as con:
+        con.execute(
+            "UPDATE run SET run_state='terminal', contract_status=?, outcome=?, verdict_json=?, "
+            "result_json=?, result_validation_json=?, gateway_result_json=?, terminal_at=? WHERE run_id=?",
+            (result.get("status"), verdict.get("outcome"), json.dumps(verdict),
+             json.dumps(result), json.dumps(result_validation),
+             json.dumps(gateway_result) if gateway_result is not None else None, _now(), run_id))
+
+
+def get_run(run_id: str) -> dict | None:
+    with _connect() as con:
+        row = con.execute("SELECT * FROM run WHERE run_id=?", (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_events(run_id: str, since: int = 0) -> list[dict]:
+    with _connect() as con:
+        rows = con.execute(
+            "SELECT sequence, event_json, m1_validation_json FROM run_event "
+            "WHERE run_id=? AND sequence>? ORDER BY sequence", (run_id, since)).fetchall()
+    return [{"event": json.loads(r["event_json"]),
+             "m1_validation": json.loads(r["m1_validation_json"])} for r in rows]

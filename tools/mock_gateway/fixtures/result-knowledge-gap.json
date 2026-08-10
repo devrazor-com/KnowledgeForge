@@ -1,0 +1,19 @@
+{
+  "run_id": "mock",
+  "status": "completed",
+  "summary": "Agent stopped: no documented mapping from a subscription's entitlement_flags to the billing ledger's invoice lines.",
+  "check_results": [],
+  "diagnosis": {
+    "category": "missing_technical_mapping",
+    "explanation": "The package describes entitlement_flags on the subscription record and, separately, how the billing ledger prices invoice lines from a ratecard. Nothing states how an entitlement flag becomes a billed line: whether the ledger reads entitlement_flags directly, whether ratecard_code is the same identifier as the entitlement code, or whether a new billable entitlement needs an explicit ratecard entry.",
+    "technical_details": "Searched larkspur-index.md, rules/plan-rules.md, data/account-model.md, data/billing-ledger.md. account-model.md defers invoicing to 'the billing ledger's concern'; billing-ledger.md prices lines from active billable entitlements but never defines how activeness is read from entitlement_flags.",
+    "recommendations": [
+      "Add a section describing how entitlement_flags propagate to invoice lines, and whether the correspondence is by shared code or an explicit mapping.",
+      "State whether a new billable entitlement requires a ratecard entry or is billed automatically once its flag is set."
+    ],
+    "confidence": "high",
+    "evidence_references": ["data/account-model.md", "data/billing-ledger.md", "transcript.log"]
+  },
+  "artifacts": ["transcript.log", "search-trace.log"],
+  "duration_seconds": 96.2
+}

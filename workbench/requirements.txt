@@ -1,9 +1,11 @@
 # KnowledgeForge Module 1 — production Validation Workbench.
 # Simplest stack that works: FastAPI + Jinja + SQLite (stdlib) + PyYAML for
-# front matter. Contract validation (jsonschema) and the Gateway client arrive
-# in Step 2, not here.
+# front matter + jsonschema for Module 2 contract validation. The Gateway client
+# uses only the standard library (urllib).
 fastapi>=0.110
 uvicorn>=0.29
 jinja2>=3.1
+python-multipart>=0.0.9
 pyyaml>=6.0
+jsonschema>=4.21
 pytest>=8.0

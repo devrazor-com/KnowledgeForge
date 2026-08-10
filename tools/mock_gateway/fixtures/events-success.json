@@ -1,0 +1,10 @@
+[
+  { "event_type": "accepted", "message": "Validation request accepted" },
+  { "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "event_type": "progress", "message": "Knowledge package loaded (4 files)" },
+  { "event_type": "tool_call", "message": "Read data/account-model.md" },
+  { "event_type": "tool_call", "message": "Added priority_support to entitlement_flags and a matching ratecard entry" },
+  { "event_type": "check", "message": "CHK-MIGRATE passed (exit 0)" },
+  { "event_type": "check", "message": "CHK-TESTS passed (exit 0)" },
+  { "event_type": "completed", "message": "Execution finished" }
+]

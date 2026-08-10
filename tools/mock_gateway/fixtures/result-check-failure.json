@@ -1,0 +1,12 @@
+{
+  "run_id": "mock",
+  "status": "completed",
+  "summary": "Implementation attempted: priority_support was added, but the billing regression suite failed on the new entitlement's invoice line.",
+  "check_results": [
+    { "check_id": "CHK-MIGRATE", "passed": true, "exit_code": 0, "output": "2 migrations applied" },
+    { "check_id": "CHK-TESTS", "passed": false, "exit_code": 1, "output": "139 passed, 3 failed: test_invoice_line_priority_support expected amount_minor=1500, got 0" }
+  ],
+  "diagnosis": null,
+  "artifacts": ["diff.patch", "migrate.log", "test.log", "transcript.log"],
+  "duration_seconds": 337.9
+}

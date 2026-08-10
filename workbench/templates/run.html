@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Run {{ run.run_id }} · Validation Workbench{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › <a href="/packages/{{ run.request.package.name if run.request else '' }}">{{ run.package_name }}</a> › Run</div>{% endblock %}
+{% block content %}
+  <h1>Validation run <span class="muted">{{ run.run_id }}</span></h1>
+  <p class="sub">Task <strong>{{ run.task_id }}</strong> against package <strong>{{ run.package_name }}</strong>.
+     State: <span class="badge" id="run-state">{{ run.run_state }}</span></p>
+
+  <div class="legend">
+    <span><span class="swatch m1"></span> Produced by Module 1</span>
+    <span><span class="swatch m2"></span> Crosses the Module 2 boundary</span>
+    <span><span class="swatch m3"></span> Produced by Module 3</span>
+    <span><span class="swatch vd"></span> Conclusion — Module 1 only</span>
+  </div>
+  <div class="flow" id="flow"></div>
+
+  <!-- 1. Inputs -->
+  <section class="stage m1" id="stage-0">
+    <h2><span class="who">Module 1 · input</span> 1. Inputs</h2>
+    <div class="kv">Package: <b>{{ run.package_name }}</b> · Task: <b>{{ run.task_id }}</b> · Environment: <b>{{ run.target_environment }}</b></div>
+    <div class="kv">Capabilities used: {% for c in run.capabilities %}<span class="cap-badge">{{ c }}</span> {% endfor %}</div>
+  </section>
+
+  <!-- 2. Assembly -->
+  <section class="stage m1" id="stage-1">
+    <h2><span class="who">Module 1</span> 2. Module 1 Assembly</h2>
+    <div class="kv">Package fingerprint: <span class="fp">{{ run.package_fingerprint }}</span></div>
+    <div class="kv">Task fingerprint: <span class="fp">{{ run.task_fingerprint }}</span></div>
+  </section>
+
+  <!-- 3. ValidationRequest -->
+  <section class="stage m2" id="stage-2">
+    <h2><span class="who">Crosses Module 2</span> 3. ValidationRequest</h2>
+    {% if run.request_validation and run.request_validation.passed %}
+      <span class="badge pass">✓ Module 1 validated the outbound ValidationRequest</span>
+    {% else %}
+      <span class="badge fail">✗ Module 1 outbound validation failed</span>
+      <details class="panel" open><summary>Validation errors</summary><pre>{{ run.request_validation.errors | tojson(indent=2) }}</pre></details>
+    {% endif %}
+    <details class="panel" open>
+      <summary>ValidationRequest JSON <button class="copy" data-target="req-json">Copy</button></summary>
+      <pre id="req-json">{{ run.request | tojson(indent=2) }}</pre>
+    </details>
+  </section>
+
+  <!-- 4. Module 2 Contract -->
+  <section class="stage m2" id="stage-3">
+    <h2><span class="who">Module 2 · operation</span> 4. Module 2 Contract</h2>
+    <div class="kv"><b>POST</b> <span class="fp">{{ mod3_base_url }}/runs</span> — the <code>start</code> operation carrying the request across the boundary.</div>
+  </section>
+
+  <!-- 5. Gateway -->
+  <section class="stage m3" id="stage-4">
+    <h2><span class="who">Module 3</span> 5. Gateway (mock)</h2>
+    {% if run.gateway_ack %}
+      <span class="badge pass-muted">Mock-only: Gateway validated the request on receipt</span>
+      <div class="kv muted">This “Mock-only” signal is out of band and is <b>not</b> part of the Module 2 contract. The real Gateway need not send it; its absence is normal.</div>
+      <details class="panel"><summary>Gateway acknowledgement (mock) <button class="copy" data-target="ack-json">Copy</button></summary><pre id="ack-json">{{ run.gateway_ack | tojson(indent=2) }}</pre></details>
+    {% elif run.error %}
+      <div class="notice-bad">{{ run.error }}</div>
+    {% else %}
+      <div class="kv muted">Contacting the Gateway…</div>
+    {% endif %}
+  </section>
+
+  <!-- 6. ExecutionEvents -->
+  <section class="stage m3" id="stage-5">
+    <h2><span class="who">Module 3 → Module 1</span> 6. ExecutionEvents</h2>
+    <p class="sub">Streamed live. Module 1 validates each event on receipt.</p>
+    <div id="events"><div class="kv muted">Waiting for events…</div></div>
+  </section>
+
+  <!-- 7. ValidationResult -->
+  <section class="stage m3" id="stage-6">
+    <h2><span class="who">Module 3 → Module 1</span> 7. ValidationResult</h2>
+    <div id="result"><div class="kv muted">Available once the run is terminal.</div></div>
+  </section>
+
+  <!-- 8. Verdict -->
+  <section class="stage vd" id="stage-7">
+    <h2><span class="who">Module 1 only</span> 8. Module 1 Verdict</h2>
+    <div id="verdict"><div class="kv muted">Derived locally once the result arrives.</div></div>
+  </section>
+
+  <script id="run-meta" type="application/json">{{ {"run_id": run.run_id} | tojson }}</script>
+  <script src="/static/app.js"></script>
+{% endblock %}

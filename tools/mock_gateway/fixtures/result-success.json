@@ -1,0 +1,12 @@
+{
+  "run_id": "mock",
+  "status": "completed",
+  "summary": "Added priority_support entitlement, granted it on the business tier, and added a matching billable ratecard entry; a priced invoice line is now produced each cycle.",
+  "check_results": [
+    { "check_id": "CHK-MIGRATE", "passed": true, "exit_code": 0, "output": "2 migrations applied: subscription.entitlement_flags, ratecard.priority_support" },
+    { "check_id": "CHK-TESTS", "passed": true, "exit_code": 0, "output": "142 passed, 0 failed" }
+  ],
+  "diagnosis": null,
+  "artifacts": ["diff.patch", "migrate.log", "test.log", "transcript.log"],
+  "duration_seconds": 418.5
+}

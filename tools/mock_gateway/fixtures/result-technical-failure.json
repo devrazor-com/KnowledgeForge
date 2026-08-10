@@ -1,0 +1,13 @@
+{
+  "run_id": "mock",
+  "status": "failed",
+  "summary": "Run aborted: the billing connector rejected the sandbox credentials. The knowledge package was never exercised.",
+  "check_results": [],
+  "diagnosis": {
+    "category": "authentication_failure",
+    "explanation": "The billing connector rejected the credentials supplied by the execution environment, so the run could not start real work. This is an environment/credential problem, not a fault in the knowledge package.",
+    "confidence": "high"
+  },
+  "artifacts": ["gateway.log"],
+  "duration_seconds": 7.4
+}

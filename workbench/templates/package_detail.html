@@ -20,6 +20,54 @@
     {% endif %}
   </section>
 
+  <section class="card run-start">
+    <h2>Start a validation run</h2>
+    {% if not tasks %}
+      <div class="empty">No tasks to run in <code>{{ assembly.dir_name }}/tasks/</code>.</div>
+    {% else %}
+    <form method="post" action="/runs">
+      <input type="hidden" name="dir_name" value="{{ assembly.dir_name }}"/>
+      <div class="run-grid">
+        <div class="field">
+          <label>Task</label>
+          <select name="task" required>
+            {% for t in tasks %}<option value="{{ t.id }}">{{ t.id }} — {{ t.title }}{% if not t.active %} (inactive){% endif %}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="field">
+          <label>Target environment</label>
+          <select name="environment" required>
+            {% for e in environments %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+          </select>
+        </div>
+        {% if dev_mock %}
+        <div class="field poc">
+          <label><span class="tag">dev / mock only</span> Forced outcome — not part of the contract</label>
+          <select name="forced_outcome">
+            <option value="random">Random</option>
+            <option value="success">Success</option>
+            <option value="check_failure">Check failure</option>
+            <option value="knowledge_gap">Knowledge gap</option>
+            <option value="technical_failure">Technical failure</option>
+          </select>
+        </div>
+        {% endif %}
+      </div>
+      <div class="field">
+        <label>Permitted capabilities</label>
+        <div class="caps">
+          {% for c in capabilities %}
+          <label class="cap"><input type="checkbox" name="capabilities" value="{{ c }}"
+            {% if c in ['filesystem', 'shell'] %}checked{% endif %}/> {{ c }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <button type="submit" class="primary">Start run ▶</button>
+      {% if not dev_mock %}<span class="muted" style="margin-left:10px">Forced-outcome control hidden — <code>WORKBENCH_DEV_MOCK</code> is off.</span>{% endif %}
+    </form>
+    {% endif %}
+  </section>
+
   {% if assembly.problems %}
   <section class="card problems">
     <h2>Discovery problems ({{ assembly.problems|length }})</h2>

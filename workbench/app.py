@@ -1,25 +1,23 @@
-"""FastAPI app and the Step 1 screens: Packages and Package detail.
+"""FastAPI app and screens.
 
-Server-rendered Jinja templates, light JavaScript, no build step (house pattern).
-This step has no Gateway interaction and no run persistence — it proves that a
-package can be loaded, discovered, ordered, fingerprinted, stored immutably, and
-seen, with its tasks, in the UI.
+Step 1: Packages, Package detail.
+Step 2A: Start a run, the live Run screen (SSE), and a JSON status endpoint.
+
+Server-rendered Jinja templates + light JavaScript, no build step. No route-module
+split — kept as one file until readability actually demands otherwise.
 
 Run from the repository root:
     ./workbench/.venv/bin/uvicorn workbench.app:app --reload --port 8010
-Then open http://127.0.0.1:8010
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from workbench import config, db
+from workbench import config, db, orchestrator
 from workbench.packages import PackageError, assemble, list_package_dirs
 from workbench.tasks import load_tasks
 
@@ -47,45 +45,76 @@ def _assemble_dir(dir_name: str):
 def packages(request: Request):
     rows = []
     for dir_name in list_package_dirs():
-        assembly = _assemble_dir(dir_name)
-        tasks = load_tasks(config.PACKAGES_DIR / dir_name)
+        a = _assemble_dir(dir_name)
         rows.append({
-            "dir_name": dir_name,
-            "name": assembly.package.name,
-            "version": assembly.package.version,
-            "fingerprint": assembly.package.fingerprint,
-            "file_count": len(assembly.package.files),
-            "task_count": len(tasks),
-            "problem_count": len(assembly.problems),
+            "dir_name": dir_name, "name": a.package.name, "version": a.package.version,
+            "fingerprint": a.package.fingerprint, "file_count": len(a.package.files),
+            "task_count": len(load_tasks(config.PACKAGES_DIR / dir_name)),
+            "problem_count": len(a.problems),
         })
     return templates.TemplateResponse(request, "packages.html", {"rows": rows})
 
 
 @app.get("/packages/{dir_name}")
 def package_detail(request: Request, dir_name: str):
-    assembly = _assemble_dir(dir_name)
-    # Store the snapshot immutably (PKG-8). Newly-seen content becomes a new row;
-    # identical content is a no-op.
-    newly_stored = db.save_snapshot(assembly)
-
-    tasks = load_tasks(config.PACKAGES_DIR / dir_name)
-    task_rows = []
-    for t in tasks:
-        db.save_task(assembly.package.name, t)
-        t.active = db.get_active(assembly.package.name, t.id)
-        task_rows.append(t)
-
+    a = _assemble_dir(dir_name)
+    newly_stored = db.save_snapshot(a)
+    tasks = []
+    for t in load_tasks(config.PACKAGES_DIR / dir_name):
+        db.save_task(a.package.name, t)
+        t.active = db.get_active(a.package.name, t.id)
+        tasks.append(t)
     return templates.TemplateResponse(request, "package_detail.html", {
-        "assembly": assembly,
-        "package": assembly.package,
-        "tasks": task_rows,
-        "newly_stored": newly_stored,
+        "assembly": a, "package": a.package, "tasks": tasks, "newly_stored": newly_stored,
+        "capabilities": config.CAPABILITIES, "environments": config.ENVIRONMENTS,
+        "dev_mock": config.dev_mock_mode(),
     })
 
 
 @app.post("/packages/{dir_name}/tasks/{task_id}/toggle")
 def toggle_task(dir_name: str, task_id: str):
-    assembly = _assemble_dir(dir_name)
-    current = db.get_active(assembly.package.name, task_id)
-    db.set_active(assembly.package.name, task_id, not current)
+    a = _assemble_dir(dir_name)
+    db.set_active(a.package.name, task_id, not db.get_active(a.package.name, task_id))
     return RedirectResponse(url=f"/packages/{dir_name}#task-{task_id}", status_code=303)
+
+
+@app.post("/runs")
+async def start_run(
+    dir_name: str = Form(...),
+    task: str = Form(...),
+    environment: str = Form(...),
+    capabilities: list[str] = Form(default=[]),
+    forced_outcome: str | None = Form(default=None),
+):
+    _assemble_dir(dir_name)  # validates the package exists
+    # forced_outcome is dev-only; ignore it entirely unless dev/mock mode is on.
+    forced = forced_outcome if (config.dev_mock_mode() and forced_outcome not in (None, "", "random")) else None
+    try:
+        run_id = await orchestrator.start_run(dir_name, task, capabilities, environment, forced)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
+
+
+@app.get("/runs/{run_id}")
+def run_screen(request: Request, run_id: str):
+    view = orchestrator.run_view(run_id)
+    if view is None:
+        raise HTTPException(404, f"Unknown run '{run_id}'")
+    return templates.TemplateResponse(request, "run.html", {
+        "run": view, "mod3_base_url": config.mod3_base_url()})
+
+
+@app.get("/runs/{run_id}/stream")
+async def run_stream(run_id: str):
+    if orchestrator.run_view(run_id) is None:
+        raise HTTPException(404, f"Unknown run '{run_id}'")
+    return StreamingResponse(orchestrator.stream(run_id), media_type="text/event-stream")
+
+
+@app.get("/api/runs/{run_id}")
+def run_json(run_id: str):
+    view = orchestrator.run_view(run_id)
+    if view is None:
+        raise HTTPException(404, f"Unknown run '{run_id}'")
+    return JSONResponse(view)
