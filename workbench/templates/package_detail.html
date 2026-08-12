@@ -50,6 +50,7 @@
             <option value="check_failure_large">Check failure (oversized content)</option>
             <option value="knowledge_gap">Knowledge gap</option>
             <option value="technical_failure">Technical failure</option>
+            <option value="gateway_timeout">Gateway-reported timeout (valid result, rule #2)</option>
           </select>
         </div>
         <div class="field poc">
@@ -65,6 +66,7 @@
             <option value="seq_gap">Sequence gap</option>
             <option value="seq_dup">Sequence duplicate</option>
             <option value="seq_ooo">Out-of-order events</option>
+            <option value="never_terminal">Never terminate (drives Module 1 timeout)</option>
           </select>
         </div>
         {% endif %}

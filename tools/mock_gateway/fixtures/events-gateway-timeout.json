@@ -1,0 +1,5 @@
+[
+  { "event_type": "accepted", "message": "Validation request accepted" },
+  { "event_type": "started", "message": "Preparing environment larkspur-sandbox" },
+  { "event_type": "failed", "message": "Execution exceeded the Gateway's timeout budget" }
+]

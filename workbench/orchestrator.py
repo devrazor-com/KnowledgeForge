@@ -1,20 +1,29 @@
 """Run orchestration — assemble, send, drive one validation run, and record a
-clear terminal state whether the run succeeds or the Gateway misbehaves.
+clear terminal state whether the run succeeds, the Gateway misbehaves, the run is
+cancelled, or Module 1's deadline expires.
 
 Live progress: Gateway → server-side background poller → validate → persist → SSE
-→ browser. The poller runs independently of any browser; the SSE stream replays
-persisted events then tails new ones (basic replay-on-connect; formal NFR-3 is
-Step 3).
+→ browser. The poller runs independently of any browser and is the SOLE normal
+writer of a Gateway terminal result.
 
-The `run` row is Module 1's LOCAL validation-attempt record. It may exist even
-when Module 3 never created a run — `gateway_ack` (set only on a successful start)
-is the authoritative indication that a Gateway run actually exists. When no valid
-ValidationResult is obtained, the run reaches a terminal error state with a
-Module-1-authored `error_kind`; a ValidationResult is never fabricated
-(see REQUIREMENTS_CLARIFICATIONS.md, EXE-8).
+Termination policy (Step 3A):
+  * `execution_context.timeout_seconds` is the Gateway's execution budget after
+    acceptance. Module 1's run deadline = accepted_at + that value (read from the
+    SENT request) + a small guard margin. It is authoritative: individual Gateway
+    calls and 5xx retries are bounded by the remaining time to the deadline, so a
+    single socket call or retry loop can never silently overrun it.
+  * The per-call socket timeout (GATEWAY_HTTP_TIMEOUT) bounds ONE network call and
+    is never the run budget.
+  * On deadline breach the run becomes terminal `timed_out` (effective
+    inconclusive) — WRITE-ONCE, so a late Gateway `cancelled` from the fire-and-
+    forget cleanup cancel can never rewrite it. A user cancellation honoured
+    BEFORE the deadline is a normal rule #1 `cancelled`.
+  * There is NO silence-based stall heuristic: the frozen contract guarantees no
+    progress cadence, so inferring a stall from quiet would depend on an unstated
+    property of Module 3 (see REQUIREMENTS_CLARIFICATIONS.md open item).
 
-Nothing here imports Module 3 or the mock; the only channel is HTTP via
-workbench.gateway_client.
+A ValidationResult is never fabricated (EXE-8). Nothing here imports Module 3 or
+the mock; the only channel is HTTP via workbench.gateway_client.
 """
 
 from __future__ import annotations
@@ -22,7 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from workbench import config, contract, db, gateway_client, verdict
@@ -34,16 +43,18 @@ from workbench.tasks import load_tasks
 TERMINAL_EVENTS = {"completed", "failed", "cancelled"}
 POLL_INTERVAL = 0.5
 SSE_TICK = 0.5
-MAX_RUN_SECONDS = 120        # resource backstop; real timeout/stall handling is Step 3.
-RETRY_ATTEMPTS = 3           # total attempts on a transient 5xx (Step 2B, clarification 8)
+RETRY_ATTEMPTS = 3           # total attempts on a transient 5xx
 RETRY_DELAY = 1.0            # fixed delay between attempts; 4xx is never retried.
 
 _pollers: dict[str, asyncio.Task] = {}
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _new_run_id() -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    return f"run-{stamp}-{uuid.uuid4().hex[:6]}"
+    return f"run-{_now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
 
 
 def _is_malformed(body: Any) -> bool:
@@ -58,24 +69,61 @@ def _body_text(body: Any) -> str | None:
     return json.dumps(body, indent=2)
 
 
-async def _gw_call(fn: Callable, *args) -> tuple[int, Any]:
-    """Call a Gateway operation, retrying only on a transient 5xx (fixed delay,
-    3 attempts total). 4xx is returned as-is; transport failures raise GatewayError."""
+# --------------------------------------------------------------------------
+# Deadline helpers — the run deadline is authoritative
+# --------------------------------------------------------------------------
+
+def _deadline(run: dict | None) -> datetime | None:
+    """accepted_at + execution_context.timeout_seconds (from the sent request) +
+    guard. None before Gateway acceptance (no run exists on the Gateway yet)."""
+    if not run or not run.get("accepted_at") or not run.get("request_json"):
+        return None
+    ts = (json.loads(run["request_json"]).get("execution_context") or {}).get("timeout_seconds")
+    if ts is None:
+        return None
+    return datetime.fromisoformat(run["accepted_at"]) + timedelta(
+        seconds=int(ts) + config.timeout_guard_seconds())
+
+
+def _remaining(deadline: datetime | None) -> float:
+    """Seconds left before the deadline. With no deadline yet (pre-acceptance),
+    a single call is bounded only by the per-call socket timeout."""
+    if deadline is None:
+        return config.gateway_http_timeout()
+    return (deadline - _now()).total_seconds()
+
+
+async def _gw_call(fn: Callable, deadline: datetime | None, *args) -> tuple[int, Any]:
+    """Call a Gateway operation bounded by the run deadline. Each call's timeout is
+    min(GATEWAY_HTTP_TIMEOUT, remaining); a transient 5xx is retried only if a retry
+    would still fit before the deadline. Raises GatewayError on transport failure
+    or when no budget remains."""
     status, body = 0, None
     for attempt in range(1, RETRY_ATTEMPTS + 1):
-        status, body = await asyncio.to_thread(fn, *args)
+        remaining = _remaining(deadline)
+        if remaining <= 0:
+            raise gateway_client.GatewayError("run deadline reached before the call")
+        call_timeout = min(config.gateway_http_timeout(), remaining)
+        status, body = await asyncio.to_thread(fn, *args, timeout=call_timeout)
         if status >= 500 and attempt < RETRY_ATTEMPTS:
+            if _remaining(deadline) <= RETRY_DELAY:   # no budget to retry within the deadline
+                return status, body
             await asyncio.sleep(RETRY_DELAY)
             continue
         return status, body
     return status, body
 
 
+# --------------------------------------------------------------------------
+# Request assembly and run start
+# --------------------------------------------------------------------------
+
 def build_request(dir_name: str, task: Task, capabilities: list[str],
                   environment: str, run_id: str) -> dict:
     """Assemble the immutable ValidationRequest. The task is emitted with contract
     fields only — the operator-facing `active` flag is excluded (the request schema
-    is additionalProperties:false)."""
+    is additionalProperties:false). timeout_seconds is seeded from config; once the
+    request exists, THAT value is authoritative for the deadline."""
     package = assemble(config.PACKAGES_DIR / dir_name, dir_name).package
     task_obj: dict = {"id": task.id, "title": task.title, "description": task.description,
                       "fingerprint": task.fingerprint}
@@ -94,7 +142,7 @@ def build_request(dir_name: str, task: Task, capabilities: list[str],
         "package": package.model_dump(),
         "task": task_obj,
         "execution_context": {"target_environment": environment,
-                              "timeout_seconds": config.DEFAULT_TIMEOUT_SECONDS,
+                              "timeout_seconds": config.run_timeout_seconds(),
                               "additional_instructions": None},
         "permitted_capabilities": sorted(capabilities),
     }
@@ -125,14 +173,14 @@ async def start_run(dir_name: str, task_id: str, capabilities: list[str],
                          payload_text=json.dumps(request_validation["errors"], indent=2))
         return run_id
 
-    # forced_outcome and fault are development-only and out of band. Gate on the
-    # explicit dev/mock flag (defence in depth) and never place them in the body.
     dev = config.dev_mock_mode()
     forced = forced_outcome if (dev and forced_outcome) else None
     fault = fault if (dev and fault) else None
 
     try:
-        status, ack = await _gw_call(gateway_client.start, request, forced, fault)
+        # No deadline yet — before acceptance the start call is bounded only by the
+        # per-call socket timeout.
+        status, ack = await _gw_call(gateway_client.start, None, request, forced, fault)
     except gateway_client.GatewayError as e:
         db.set_run_error(run_id, "gateway_unreachable",
                          f"Module 3 could not be reached at {mod3_base_url()} when starting the run. "
@@ -140,7 +188,7 @@ async def start_run(dir_name: str, task_id: str, capabilities: list[str],
         return run_id
 
     if status == 200 and isinstance(ack, dict) and not ack.get("_malformed") and ack.get("run_id"):
-        db.set_run_running(run_id, ack)
+        db.set_run_running(run_id, ack)   # anchors the deadline (accepted_at)
         _pollers[run_id] = asyncio.create_task(_poll(run_id))
     elif status == 400:
         reason = ack.get("reason") if isinstance(ack, dict) else None
@@ -156,16 +204,75 @@ async def start_run(dir_name: str, task_id: str, capabilities: list[str],
     return run_id
 
 
-async def _fetch_result(run_id: str):
+# --------------------------------------------------------------------------
+# Timeout + cancellation
+# --------------------------------------------------------------------------
+
+def _record_timeout(run_id: str) -> None:
+    """Record Module 1's deadline breach (WRITE-ONCE) and, only if we actually
+    wrote it, fire a best-effort cleanup cancel with its own small budget."""
+    run = db.get_run(run_id)
+    ts = None
+    if run and run.get("request_json"):
+        ts = (json.loads(run["request_json"]).get("execution_context") or {}).get("timeout_seconds")
+    guard = config.timeout_guard_seconds()
+    wrote = db.set_run_error(
+        run_id, "timed_out",
+        f"Module 1's run deadline expired: the Gateway did not report completion within its "
+        f"execution budget ({ts}s) plus Module 1's guard margin ({guard}s) after acceptance. "
+        f"Recorded by Module 1 — no ValidationResult was received.", payload_text=None)
+    if wrote:
+        _schedule_cleanup_cancel(run_id)
+
+
+def _schedule_cleanup_cancel(run_id: str) -> None:
+    """Fire-and-forget cleanup cancel AFTER a timeout is recorded. Own fixed budget
+    (GATEWAY_CANCEL_CLEANUP_TIMEOUT); never delays or changes the timed_out
+    disposition, and its outcome is ignored (write-once protects the record)."""
+    async def _cleanup() -> None:
+        try:
+            await asyncio.to_thread(gateway_client.cancel, run_id, config.GATEWAY_CANCEL_CLEANUP_TIMEOUT)
+        except Exception:
+            pass
+    asyncio.create_task(_cleanup())
+
+
+async def request_cancel(run_id: str) -> dict:
+    """Operator-initiated cancellation. Marks the run and asks the Gateway to
+    cancel; the poller records the terminal `cancelled` when the Gateway reports it
+    (this function never writes the terminal state)."""
+    run = db.get_run(run_id)
+    if run is None:
+        return {"ok": False, "unknown": True, "message": "No such run."}
+    if run["run_state"] in ("terminal", "error"):
+        return {"ok": False, "already_terminal": True,
+                "message": "This run had already finished; nothing to cancel."}
+    db.set_cancel_requested(run_id)
+    try:
+        await _gw_call(gateway_client.cancel, _deadline(run), run_id)
+        return {"ok": True, "message": "Cancellation requested. The run will end when the Gateway reports it."}
+    except gateway_client.GatewayError:
+        return {"ok": True, "unreachable": True,
+                "message": "Could not reach the Gateway to cancel; the run will end on timeout "
+                           "or when the Gateway responds."}
+
+
+# --------------------------------------------------------------------------
+# Poller
+# --------------------------------------------------------------------------
+
+async def _fetch_result(run_id: str, deadline: datetime | None):
     """Fetch/validate the result after the terminal event. Returns
     ('ok', result, rdata) or ('error',) after recording the error itself."""
-    result, rdata = None, None
     for _ in range(7):
         try:
-            status, rdata = await _gw_call(gateway_client.get_result, run_id)
+            status, rdata = await _gw_call(gateway_client.get_result, deadline, run_id)
         except gateway_client.GatewayError as e:
-            db.set_run_error(run_id, "gateway_unreachable",
-                             "Lost the connection to Module 3 while fetching the result.", payload_text=str(e))
+            if deadline is not None and _now() >= deadline:
+                _record_timeout(run_id)
+            else:
+                db.set_run_error(run_id, "gateway_unreachable",
+                                 "Lost the connection to Module 3 while fetching the result.", payload_text=str(e))
             return ("error",)
         if status >= 400:
             db.set_run_error(run_id, "gateway_http_error",
@@ -185,15 +292,21 @@ async def _fetch_result(run_id: str):
 
 
 async def _poll(run_id: str) -> None:
-    started = datetime.now(timezone.utc)
     max_seq = db.last_sequence(run_id)
+    deadline = _deadline(db.get_run(run_id))
     try:
-        while (datetime.now(timezone.utc) - started).total_seconds() < MAX_RUN_SECONDS:
+        while True:
+            if deadline is not None and _now() >= deadline:
+                _record_timeout(run_id)          # deadline wins; do not process further events
+                return
             try:
-                status, data = await _gw_call(gateway_client.get_events, run_id, max_seq)
+                status, data = await _gw_call(gateway_client.get_events, deadline, run_id, max_seq)
             except gateway_client.GatewayError as e:
-                db.set_run_error(run_id, "gateway_unreachable",
-                                 "Lost the connection to Module 3 during the run.", payload_text=str(e))
+                if deadline is not None and _now() >= deadline:
+                    _record_timeout(run_id)
+                else:
+                    db.set_run_error(run_id, "gateway_unreachable",
+                                     "Lost the connection to Module 3 during the run.", payload_text=str(e))
                 return
             if status >= 400:
                 db.set_run_error(run_id, "gateway_http_error",
@@ -207,11 +320,9 @@ async def _poll(run_id: str) -> None:
             events = (data or {}).get("events", []) if isinstance(data, dict) else []
             terminal = False
             for ev in events:
-                # Detect a sequence anomaly BEFORE persisting, so a DB constraint
-                # can never hide the real protocol failure (clarification 9).
                 expected = max_seq + 1
                 seq = ev.get("sequence")
-                if seq != expected:
+                if seq != expected:   # sequence anomaly detected BEFORE persisting
                     where = "gap" if isinstance(seq, int) and seq > expected else "duplicate or out of order"
                     db.set_run_error(run_id, "protocol_error",
                                      f"Event sequence broke: expected #{expected}, received #{seq} ({where}).",
@@ -231,7 +342,7 @@ async def _poll(run_id: str) -> None:
                     break
 
             if terminal:
-                outcome = await _fetch_result(run_id)
+                outcome = await _fetch_result(run_id, deadline)
                 if outcome[0] != "ok":
                     return
                 _, result, rdata = outcome
@@ -244,19 +355,20 @@ async def _poll(run_id: str) -> None:
                     return
                 request = json.loads(db.get_run(run_id)["request_json"])
                 vd = verdict.derive_verdict(request, result)
-                db.finalize_run(run_id, result, m1v, vd, gateway_result=rdata)
+                db.finalize_run(run_id, result, m1v, vd, gateway_result=rdata)   # write-once
                 return
 
-            await asyncio.sleep(POLL_INTERVAL)
-
-        db.set_run_error(run_id, "protocol_error",
-                         f"Safety stop: no terminal event within {MAX_RUN_SECONDS}s "
-                         f"(proper timeout/stall handling is Step 3).", payload_text=None)
-    except Exception as e:  # never let a poller crash silently corrupt the run
+            nap = POLL_INTERVAL if deadline is None else max(0.05, min(POLL_INTERVAL, _remaining(deadline)))
+            await asyncio.sleep(nap)
+    except Exception as e:   # never let a poller crash silently corrupt the run
         db.set_run_error(run_id, "protocol_error", f"Unexpected error during run: {e}", payload_text=None)
     finally:
         _pollers.pop(run_id, None)
 
+
+# --------------------------------------------------------------------------
+# SSE + views
+# --------------------------------------------------------------------------
 
 def _sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
@@ -264,9 +376,14 @@ def _sse(event: str, payload: dict) -> str:
 
 async def stream(run_id: str):
     last_sent = 0
-    started = datetime.now(timezone.utc)
+    run0 = db.get_run(run_id)
+    ts = config.run_timeout_seconds()
+    if run0 and run0.get("request_json"):
+        ts = (json.loads(run0["request_json"]).get("execution_context") or {}).get("timeout_seconds") or ts
+    cap = int(ts) + config.timeout_guard_seconds() + 60   # outlive the deadline; single source
+    started = _now()
     yield _sse("open", {"run_id": run_id})
-    while (datetime.now(timezone.utc) - started).total_seconds() < MAX_RUN_SECONDS + 30:
+    while (_now() - started).total_seconds() < cap:
         for item in db.get_events(run_id, last_sent):
             last_sent = item["event"]["sequence"]
             yield _sse("event", item)

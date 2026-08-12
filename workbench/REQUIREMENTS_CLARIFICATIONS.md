@@ -40,20 +40,39 @@ than inventing a sixth. The distinction is preserved and shown:
 
 ---
 
+## Timeout policy — one authoritative deadline (Step 3A, settled)
+
+The run deadline is **`accepted_at` (Gateway acceptance) + `execution_context.
+timeout_seconds` from the SENT request + a small guard margin** — one number,
+traceable to the request. `execution_context.timeout_seconds` is the Gateway's
+execution budget after acceptance (GW-11 enforces; EXE-7 makes Module 1 the
+backstop). Individual Gateway calls and 5xx retries are bounded by the remaining
+time to the deadline, so nothing can silently overrun it. The per-call socket
+timeout (`GATEWAY_HTTP_TIMEOUT`) bounds one network call only; the old
+120-second poller cap is removed. On breach the run is terminal `timed_out`
+(effective `inconclusive`), **write-once**, with a fire-and-forget cleanup cancel
+on its own `GATEWAY_CANCEL_CLEANUP_TIMEOUT` budget. This resolves the earlier
+open item about competing backstops.
+
+**Provenance is distinguished**: Module 1's deadline breach → `run_state = error`,
+`error_kind = timed_out`, no `ValidationResult`. A Gateway-reported timeout → a
+valid `ValidationResult` with `status = failed` → verdict rule #2. Same effective
+`inconclusive`, different provenance, shown distinctly.
+
+---
+
 # Open items — UNRESOLVED, for a later step
 
 These are **not** settled. Do not treat them as decided.
 
-## Consolidate the timeout/stall policy (Step 3)
+## Early stall detection depends on an unstated Gateway property (dropped from Step 3A)
 
-Step 2B left timeout behaviour split across two implementation backstops:
-
-- a **30-second socket timeout** on each HTTP call to the Gateway
-  (`workbench/gateway_client.py`), and
-- a **120-second poller cap** (`MAX_RUN_SECONDS` in `workbench/orchestrator.py`).
-
-These are acceptable for 2B, but they are hidden, independent limits that could
-compete. **Step 3 must consolidate them into one explicit, documented
-timeout/stall policy** (aligned with `execution_context.timeout_seconds` from the
-request) so the system does not end up with competing limits. Unresolved until
-Step 3 designs it.
+The frozen contract guarantees **no progress/heartbeat cadence** — nothing in
+`operations.md` or `execution-event.schema.json` obliges the Gateway to emit
+`progress` (or anything) within any interval. A legitimate compile/test can be
+silent for minutes. So Module 1 **cannot** reliably detect an early stall from
+silence without depending on an unstated property of Module 3, and doing so could
+manufacture false `inconclusive` evidence. Early stall detection was therefore
+**dropped from Step 3A** (only the authoritative timeout above remains). Revisit
+**only** if a heartbeat/progress cadence is added in a future additive contract
+version — a conversation with Sadia, not something Module 1 infers on its own.

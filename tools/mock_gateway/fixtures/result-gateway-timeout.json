@@ -1,0 +1,13 @@
+{
+  "run_id": "mock",
+  "status": "failed",
+  "summary": "Run aborted: the Gateway's execution budget was exceeded before the task completed.",
+  "check_results": [],
+  "diagnosis": {
+    "category": "timeout",
+    "explanation": "The Gateway stopped the run because it exceeded the allotted execution budget. The knowledge package was not fully exercised, so this is a technical failure rather than a judgement on the package.",
+    "confidence": "high"
+  },
+  "artifacts": ["gateway.log"],
+  "duration_seconds": 1802.0
+}

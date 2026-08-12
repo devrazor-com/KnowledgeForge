@@ -108,6 +108,13 @@ def run_screen(request: Request, run_id: str):
         "run": view, "mod3_base_url": config.mod3_base_url()})
 
 
+@app.post("/runs/{run_id}/cancel")
+async def cancel_run(run_id: str):
+    if orchestrator.run_view(run_id) is None:
+        raise HTTPException(404, f"Unknown run '{run_id}'")
+    return JSONResponse(await orchestrator.request_cancel(run_id))
+
+
 @app.get("/runs/{run_id}/stream")
 async def run_stream(run_id: str):
     if orchestrator.run_view(run_id) is None:

@@ -4,7 +4,9 @@
 {% block content %}
   <h1>Validation run <span class="muted">{{ run.run_id }}</span></h1>
   <p class="sub">Task <strong>{{ run.task_id }}</strong> against package <strong>{{ run.package_name }}</strong>.
-     State: <span class="badge" id="run-state">{{ run.run_state }}</span></p>
+     State: <span class="badge" id="run-state">{{ run.run_state }}</span>
+     {% if run.run_state in ('submitting', 'running') %}<button id="cancel-btn" class="cancel-btn">Cancel run</button>{% endif %}
+     <span id="cancel-note" class="muted"></span></p>
 
   <div class="legend">
     <span><span class="swatch m1"></span> Produced by Module 1</span>

@@ -33,9 +33,16 @@ const ERROR_LABELS = {
 
 function renderError(d) {
   const label = ERROR_LABELS[d.error_kind] || d.error_kind || "Error";
-  const gwNote = d.gateway_run_created
-    ? "A Gateway run existed when this failed (mid-stream)."
-    : "No run was ever created on the Gateway.";
+  let gwNote;
+  if (d.error_kind === "timed_out") {
+    // A deadline expiry is not a mid-stream protocol failure: the Gateway may
+    // still be running normally; Module 1 simply stopped waiting.
+    gwNote = "A run exists on the Gateway. Module 1 stopped waiting when its deadline expired and sent a best-effort cancellation request for cleanup.";
+  } else if (d.gateway_run_created) {
+    gwNote = "A Gateway run existed when this failed (mid-stream).";
+  } else {
+    gwNote = "No run was ever created on the Gateway.";
+  }
   const box = document.getElementById("run-error");
   box.hidden = false;
   box.innerHTML = `<div class="err-title">✗ Run ended in an error state — ${esc(label)}</div>
@@ -129,6 +136,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const seen = new Set();
   let firstEvent = true;
 
+  // Cancel button (live runs only). It never writes the terminal state — the
+  // Gateway reports cancelled and the poller records it; this just asks.
+  const cancelBtn = document.getElementById("cancel-btn");
+  const cancelNote = document.getElementById("cancel-note");
+  function hideCancel() { if (cancelBtn) cancelBtn.style.display = "none"; }
+  if (cancelBtn) cancelBtn.onclick = async () => {
+    cancelBtn.disabled = true;
+    if (cancelNote) cancelNote.textContent = "Cancelling…";
+    try {
+      const d = await (await fetch(`/runs/${runId}/cancel`, { method: "POST" })).json();
+      if (cancelNote) cancelNote.textContent = d.message || "";
+    } catch (_) { if (cancelNote) cancelNote.textContent = "Cancel request failed."; }
+  };
+
   const es = new EventSource(`/runs/${runId}/stream`);
 
   es.addEventListener("event", e => {
@@ -146,9 +167,10 @@ document.addEventListener("DOMContentLoaded", () => {
     loadResultPanel(runId);
     renderVerdict(data.verdict);
     const st = document.getElementById("run-state"); if (st) st.textContent = "terminal";
+    hideCancel();
   });
 
-  es.addEventListener("run_error", e => renderError(JSON.parse(e.data)));
+  es.addEventListener("run_error", e => { renderError(JSON.parse(e.data)); hideCancel(); });
 
-  es.addEventListener("done", () => es.close());
+  es.addEventListener("done", () => { es.close(); hideCancel(); });
 });

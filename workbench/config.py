@@ -51,3 +51,36 @@ def dev_mock_mode() -> bool:
     so forgetting to set it hides the dev-only forced-outcome control rather than
     exposing it."""
     return os.environ.get("WORKBENCH_DEV_MOCK", "").strip().lower() in _TRUE
+
+
+# --------------------------------------------------------------------------
+# Termination timeouts (Step 3A). These are deliberately distinct so they can
+# never be confused for one another:
+#   * run_timeout_seconds() only SEEDS the request's execution_context.timeout_
+#     seconds when Module 1 builds a ValidationRequest. Once the request exists,
+#     the value IN that request is authoritative for the run's deadline.
+#   * timeout_guard_seconds() is Module 1's small backstop margin beyond the
+#     Gateway's execution budget.
+#   * GATEWAY_HTTP_TIMEOUT bounds a SINGLE network call — never the whole run.
+#   * GATEWAY_CANCEL_CLEANUP_TIMEOUT is only for the fire-and-forget cleanup
+#     cancel issued AFTER a timeout has already been recorded.
+# --------------------------------------------------------------------------
+
+def run_timeout_seconds() -> int:
+    """Default execution budget Module 1 puts in a new ValidationRequest."""
+    return int(os.environ.get("WORKBENCH_TIMEOUT_SECONDS", str(DEFAULT_TIMEOUT_SECONDS)))
+
+
+def timeout_guard_seconds() -> int:
+    """Module 1's backstop margin beyond the Gateway's execution budget."""
+    return int(os.environ.get("WORKBENCH_TIMEOUT_GUARD_SECONDS", "30"))
+
+
+def gateway_http_timeout() -> float:
+    """Ceiling for a single Gateway HTTP call. Subordinate to the run deadline."""
+    return float(os.environ.get("WORKBENCH_GATEWAY_HTTP_TIMEOUT", "30"))
+
+
+# Fixed, small budget for the post-timeout cleanup cancel only. Not the socket
+# timeout, not the run deadline.
+GATEWAY_CANCEL_CLEANUP_TIMEOUT = 5.0

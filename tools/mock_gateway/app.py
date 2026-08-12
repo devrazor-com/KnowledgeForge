@@ -50,6 +50,9 @@ OUTCOME_POOL = {
     "check_failure_large": ("events-check-failure.json", "result-check-failure-large.json"),
     "knowledge_gap": ("events-knowledge-gap.json", "result-knowledge-gap.json"),
     "technical_failure": ("events-technical-failure.json", "result-technical-failure.json"),
+    # A Gateway-REPORTED timeout: a valid ValidationResult (status failed, diagnosis
+    # category 'timeout'). Distinct from Module 1's own deadline breach.
+    "gateway_timeout": ("events-gateway-timeout.json", "result-gateway-timeout.json"),
 }
 # Outcomes eligible for a random pick (the oversized one is opt-in via forced_outcome).
 RANDOM_OUTCOMES = ["success", "check_failure", "knowledge_gap", "technical_failure"]
@@ -158,11 +161,24 @@ async def _emit(run: Run) -> None:
                                 "message": "deliberately schema-invalid event"})  # bypass validation
         return
 
+    if fault == "never_terminal":  # accept, emit a couple of events, never terminate
+        for tmpl in run.planned[:2]:
+            await asyncio.sleep(EVENT_DELAY_SECONDS)
+            async with run.lock:
+                if run.terminal:
+                    return
+                ev = _mk_event(run, tmpl, len(run.emitted) + 1)
+                _validate_or_die(_EVENT, ev, "event")
+                run.emitted.append(ev)
+        return
+
     # Normal emission (also used for http_* / malformed / invalid_result faults,
     # which are injected at the events/result endpoints, not here).
     for tmpl in run.planned:
         await asyncio.sleep(EVENT_DELAY_SECONDS)
         async with run.lock:
+            if run.terminal:   # cancelled while we were sleeping — stop cleanly
+                return
             ev = _mk_event(run, tmpl, len(run.emitted) + 1)
             _validate_or_die(_EVENT, ev, "event")
             run.emitted.append(ev)
@@ -245,3 +261,31 @@ async def result(run_id: str):
         return JSONResponse({"result": run.result,
             "module3_validation": {"passed": True,
                 "message": "Mock validated the result against validation-result.schema.json before sending"}})
+
+
+@app.post("/runs/{run_id}/cancel")
+async def cancel(run_id: str):
+    """cancel — really interrupt an in-flight run: stop the sequence, emit a
+    cancelled event as the terminal event, and make a status:cancelled result
+    available. The emit loop stops on its next tick (it checks run.terminal)."""
+    run = RUNS.get(run_id)
+    if run is None:
+        raise HTTPException(404, "unknown run_id")
+    async with run.lock:
+        if run.terminal:
+            return JSONResponse({"run_id": run_id, "cancelled": False, "already_terminal": True,
+                                 "message": "Run had already reached a terminal state."})
+        seq = len(run.emitted) + 1
+        ev = {"run_id": run_id, "sequence": seq, "timestamp": _now(),
+              "event_type": "cancelled", "message": "Run cancelled by request"}
+        _validate_or_die(_EVENT, ev, "event")
+        run.emitted.append(ev)
+        result = {"run_id": run_id, "status": "cancelled",
+                  "summary": "Run cancelled by request before it completed.",
+                  "check_results": [], "diagnosis": None,
+                  "artifacts": ["partial-transcript.log"], "duration_seconds": 1.0}
+        _validate_or_die(_RESULT, result, "result")
+        run.result = result
+        run.terminal = True
+    return JSONResponse({"run_id": run_id, "cancelled": True, "terminal_sequence": seq,
+                         "message": "Run interrupted; cancelled event emitted and cancelled result available."})

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS run (
     gateway_ack_json TEXT, gateway_result_json TEXT, contract_status TEXT, outcome TEXT,
     verdict_json TEXT, result_json TEXT, result_validation_json TEXT,
     error TEXT, error_kind TEXT, error_payload_text TEXT,
+    accepted_at TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, cancel_requested_at TEXT,
     created_at TEXT NOT NULL, terminal_at TEXT
 );
 CREATE TABLE IF NOT EXISTS run_event (
@@ -60,6 +61,14 @@ CREATE TABLE IF NOT EXISTS run_event (
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _now_precise() -> str:
+    """Sub-second, persistent wall-clock timestamp. Used as the deadline anchor
+    (accepted_at) so that `accepted_at + timeout_seconds + guard` is exact — and
+    remains correct across a Workbench restart, since it's a stored wall-clock
+    value, not an in-memory monotonic reading."""
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _connect() -> sqlite3.Connection:
@@ -140,21 +149,34 @@ def create_run(run: dict) -> None:
 
 
 def set_run_running(run_id: str, gateway_ack: dict | None) -> None:
+    """Record Gateway acceptance. accepted_at anchors the run deadline
+    (accepted_at + timeout_seconds + guard)."""
     with _connect() as con:
-        con.execute("UPDATE run SET run_state='running', gateway_ack_json=? WHERE run_id=?",
-                    (json.dumps(gateway_ack) if gateway_ack is not None else None, run_id))
+        con.execute("UPDATE run SET run_state='running', gateway_ack_json=?, accepted_at=? WHERE run_id=?",
+                    (json.dumps(gateway_ack) if gateway_ack is not None else None, _now_precise(), run_id))
 
 
-def set_run_error(run_id: str, error_kind: str, detail: str, payload_text: str | None = None) -> None:
+def set_cancel_requested(run_id: str) -> None:
+    with _connect() as con:
+        con.execute("UPDATE run SET cancel_requested=1, cancel_requested_at=? WHERE run_id=?",
+                    (_now(), run_id))
+
+
+def set_run_error(run_id: str, error_kind: str, detail: str, payload_text: str | None = None) -> bool:
     """Record a run that reached a terminal Workbench error state — no valid
     ValidationResult was obtained. `error_kind` is Module-1-authored (not part of
     the contract); `payload_text` holds the raw offending response as text (a
-    malformed body is not JSON). result_json is deliberately never set here."""
+    malformed body is not JSON). result_json is deliberately never set here.
+
+    WRITE-ONCE: only writes if the run is not already terminal, so a timeout can
+    never be overwritten by a late Gateway cancelled (or vice versa). Returns True
+    if it actually wrote."""
     with _connect() as con:
-        con.execute(
+        cur = con.execute(
             "UPDATE run SET run_state='error', error_kind=?, error=?, error_payload_text=?, "
-            "terminal_at=? WHERE run_id=?",
+            "terminal_at=? WHERE run_id=? AND run_state NOT IN ('terminal','error')",
             (error_kind, detail, payload_text, _now(), run_id))
+        return cur.rowcount > 0
 
 
 def last_sequence(run_id: str) -> int:
@@ -175,17 +197,23 @@ def append_event(run_id: str, event: dict, m1_validation: dict) -> bool:
 
 
 def finalize_run(run_id: str, result: dict, result_validation: dict, verdict: dict,
-                 gateway_result: dict | None = None) -> None:
-    """Freeze a run as terminal. `gateway_result` is the mock's out-of-band result
-    envelope (its own validation signal), stored for display and clearly labelled
-    as mock-only in the UI; Module 1 never treats its absence as a failure."""
+                 gateway_result: dict | None = None) -> bool:
+    """Freeze a run as terminal with a real ValidationResult. WRITE-ONCE (see
+    set_run_error) — returns True only if it actually wrote, so it cannot overwrite
+    an already-terminal run (e.g. one already recorded as timed_out).
+
+    `gateway_result` is the mock's out-of-band result envelope (its own validation
+    signal), stored for display and clearly labelled as mock-only in the UI;
+    Module 1 never treats its absence as a failure."""
     with _connect() as con:
-        con.execute(
+        cur = con.execute(
             "UPDATE run SET run_state='terminal', contract_status=?, outcome=?, verdict_json=?, "
-            "result_json=?, result_validation_json=?, gateway_result_json=?, terminal_at=? WHERE run_id=?",
+            "result_json=?, result_validation_json=?, gateway_result_json=?, terminal_at=? "
+            "WHERE run_id=? AND run_state NOT IN ('terminal','error')",
             (result.get("status"), verdict.get("outcome"), json.dumps(verdict),
              json.dumps(result), json.dumps(result_validation),
              json.dumps(gateway_result) if gateway_result is not None else None, _now(), run_id))
+        return cur.rowcount > 0
 
 
 def get_run(run_id: str) -> dict | None:

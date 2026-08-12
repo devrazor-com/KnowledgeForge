@@ -54,23 +54,30 @@ def _call(method: str, path: str, payload: Any = None, timeout: float = 30.0) ->
         raise GatewayError(f"{method} {url}: {e}") from e
 
 
-def start(request: dict, forced_outcome: str | None = None, fault: str | None = None) -> tuple[int, Any]:
+def start(request: dict, forced_outcome: str | None = None, fault: str | None = None,
+          timeout: float = 30.0) -> tuple[int, Any]:
     """start — POST the ValidationRequest. forced_outcome and fault, when present,
     are development-only out-of-band query parameters; they are never placed in the
     body, which carries only the contract ValidationRequest, and are only sent in
-    dev/mock mode (the caller gates them)."""
+    dev/mock mode (the caller gates them). `timeout` bounds this single call."""
     params = {}
     if forced_outcome:
         params["forced_outcome"] = forced_outcome
     if fault:
         params["fault"] = fault
     path = "/runs" + (f"?{urllib.parse.urlencode(params)}" if params else "")
-    return _call("POST", path, request)
+    return _call("POST", path, request, timeout=timeout)
 
 
-def get_events(run_id: str, since: int = 0) -> tuple[int, Any]:
-    return _call("GET", f"/runs/{run_id}/events?since={since}")
+def get_events(run_id: str, since: int = 0, timeout: float = 30.0) -> tuple[int, Any]:
+    return _call("GET", f"/runs/{run_id}/events?since={since}", timeout=timeout)
 
 
-def get_result(run_id: str) -> tuple[int, Any]:
-    return _call("GET", f"/runs/{run_id}/result")
+def get_result(run_id: str, timeout: float = 30.0) -> tuple[int, Any]:
+    return _call("GET", f"/runs/{run_id}/result", timeout=timeout)
+
+
+def cancel(run_id: str, timeout: float = 30.0) -> tuple[int, Any]:
+    """cancel — ask the Gateway to end the run. The Gateway emits a cancelled
+    event and a cancelled result; Module 1's poller ingests them."""
+    return _call("POST", f"/runs/{run_id}/cancel", timeout=timeout)
