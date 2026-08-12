@@ -85,12 +85,15 @@ async def start_run(
     environment: str = Form(...),
     capabilities: list[str] = Form(default=[]),
     forced_outcome: str | None = Form(default=None),
+    fault: str | None = Form(default=None),
 ):
     _assemble_dir(dir_name)  # validates the package exists
-    # forced_outcome is dev-only; ignore it entirely unless dev/mock mode is on.
-    forced = forced_outcome if (config.dev_mock_mode() and forced_outcome not in (None, "", "random")) else None
+    # forced_outcome and fault are dev-only; ignored entirely unless dev/mock mode is on.
+    dev = config.dev_mock_mode()
+    forced = forced_outcome if (dev and forced_outcome not in (None, "", "random")) else None
+    fault_val = fault if (dev and fault not in (None, "", "none")) else None
     try:
-        run_id = await orchestrator.start_run(dir_name, task, capabilities, environment, forced)
+        run_id = await orchestrator.start_run(dir_name, task, capabilities, environment, forced, fault_val)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
@@ -110,6 +113,17 @@ async def run_stream(run_id: str):
     if orchestrator.run_view(run_id) is None:
         raise HTTPException(404, f"Unknown run '{run_id}'")
     return StreamingResponse(orchestrator.stream(run_id), media_type="text/event-stream")
+
+
+@app.get("/runs/{run_id}/panel")
+def run_panel(request: Request, run_id: str):
+    """Server-rendered readable ValidationResult fragment. app.js injects this on
+    live completion; it is also included inline in the Run screen for a terminal
+    run, and is what the diagnosis-rendering test asserts against."""
+    view = orchestrator.run_view(run_id)
+    if view is None or not view.get("result"):
+        raise HTTPException(404, "no result for this run")
+    return templates.TemplateResponse(request, "_result.html", {"run": view})
 
 
 @app.get("/api/runs/{run_id}")

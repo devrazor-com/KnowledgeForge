@@ -1,0 +1,41 @@
+{
+  "run_id": "mock",
+  "status": "completed",
+  "summary": "priority_support was added to the subscription model and a ratecard entry was created, but the billing regression suite failed: the new entitlement's invoice line is generated with a zero amount for a subset of business-tier subscriptions whose entitlement_flags were set before the ratecard entry existed, and the reprocessing path does not backfill them. Three tests fail and one is flaky under the new ordering.",
+  "check_results": [
+    { "check_id": "CHK-MIGRATE", "passed": true, "exit_code": 0, "output": "Applying migrations for larkspur-sandbox\n  [1/2] 2026081201_add_entitlement_flags_priority_support ... OK (0.42s)\n  [2/2] 2026081202_ratecard_priority_support ... OK (0.31s)\nSchema at revision 2026081202. 0 pending migrations.\nSeed data: 1 ratecard entry inserted (ratecard_code=priority_support, amount_minor=1500, billable=true).\nDone in 0.9s." },
+    { "check_id": "CHK-TESTS", "passed": false, "exit_code": 1, "output": "billing regression suite\n=========================\ntest_invoice_line_starter_plan ......................... PASS\ntest_invoice_line_team_plan ............................ PASS\ntest_invoice_line_business_plan ........................ PASS\ntest_invoice_line_priority_support_active .............. FAIL\n    AssertionError: expected amount_minor=1500, got 0\n    subscription_id=sub_9f31c2, plan_version=7, renews_at=2026-09-01\n    entitlement_flags.priority_support=true was set at 2026-08-10,\n    ratecard entry priority_support effective 2026-08-12; ledger priced\n    the line from the ratecard version in force at renews_at but found no\n    matching entry for the pre-existing flag and emitted amount_minor=0.\ntest_invoice_line_priority_support_reprocess .......... FAIL\n    AssertionError: reprocessing a 2026-08 cycle did not backfill the\n    priority_support line; expected 1 line, got 0.\ntest_invoice_line_priority_support_proration .......... FAIL\n    AssertionError: mid-cycle activation prorated to 0 instead of 750.\ntest_invoice_line_priority_support_idempotent ......... FLAKY (passed on retry)\n139 passed, 3 failed, 1 flaky in 48.7s\nexit status 1" }
+  ],
+  "diagnosis": {
+    "category": "missing_technical_mapping",
+    "explanation": "The implementation followed the package as written, but the package does not document how an entitlement flag that already exists on a subscription is reconciled with a ratecard entry that is introduced later. The billing ledger prices each invoice line from the ratecard version in force at renews_at; the account model says a flag set to true means the entitlement is active 'regardless of the plan default', but neither document states what the ledger should do when a subscription's entitlement_flags reference an entitlement that has no ratecard entry for the cycle being priced. The agent produced code that emits a zero-amount line in that case, which is a defensible reading of the silence in the docs, and the regression suite encodes a different expectation (backfill/proration). This is a documentation gap, not obviously a code defect: the package under-specifies the propagation and reconciliation rules between account entitlement_flags and the versioned ratecard.",
+    "technical_details": "Traced the failing path from data/account-model.md (entitlement_flags semantics) to data/billing-ledger.md (invoice line generation and ratecard versioning). account-model.md: 'A flag set to true means the entitlement is active on this subscription, regardless of whether the plan grants it by default.' billing-ledger.md: 'Always price a line from the ratecard version that was in force at renews_at, not today's.' Neither document defines: (a) whether a flag predating a ratecard entry is billed retroactively; (b) whether mid-cycle activation is prorated and by what basis; (c) whether reprocessing backfills lines created before a ratecard entry existed; (d) the identifier correspondence between an entitlement code in entitlement_flags and a ratecard_code. The agent searched all four package files and the index; no section covers reconciliation. The three failing tests each assert one of (a)/(b)/(c); the flaky test is sensitive to line-generation ordering, which is also unspecified.",
+    "recommendations": [
+      "Add a 'Reconciliation' section to data/billing-ledger.md defining how entitlement_flags map to ratecard entries, including the case where a flag predates the ratecard entry.",
+      "State explicitly whether the entitlement code in entitlement_flags is the same identifier as ratecard_code, or whether an explicit mapping table is required.",
+      "Define the behaviour when a flag is active but no ratecard entry exists for the cycle: zero-amount line, skipped line, or error.",
+      "Specify mid-cycle activation semantics (proration basis, rounding, and whether the first partial cycle is charged).",
+      "Specify reprocessing/backfill rules: when a past cycle is re-run, are lines created for entitlements whose ratecard entry was added after the original run?",
+      "Document the ordering of invoice-line generation so results are deterministic and tests are not flaky.",
+      "Add a worked example: a business-tier subscription with priority_support activated before the ratecard entry, showing the expected invoice line for the following two cycles.",
+      "Clarify how plan_version and ratecard version interact when they advance independently.",
+      "State whether functional-only (non-billable) entitlements are ever expected to appear in reconciliation logs even though they produce no line.",
+      "Add acceptance-criteria wording to the task so a future run can be checked mechanically against these reconciliation rules."
+    ],
+    "confidence": "high",
+    "evidence_references": [
+      "data/account-model.md#entitlement_flags",
+      "data/account-model.md#adding-a-new-entitlement-flag",
+      "data/billing-ledger.md#invoice-line",
+      "data/billing-ledger.md#ratecard",
+      "data/billing-ledger.md#reprocessing",
+      "rules/plan-rules.md#billable-vs-non-billable-entitlements",
+      "larkspur-index.md#conventions",
+      "artifacts/diff.patch",
+      "artifacts/test.log",
+      "artifacts/transcript.log"
+    ]
+  },
+  "artifacts": ["diff.patch", "migrate.log", "test.log", "test-flaky-retry.log", "transcript.log", "search-trace.log", "ratecard-dump.csv", "invoice-lines-before.csv", "invoice-lines-after.csv"],
+  "duration_seconds": 512.3
+}

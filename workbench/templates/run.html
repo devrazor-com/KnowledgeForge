@@ -14,6 +14,8 @@
   </div>
   <div class="flow" id="flow"></div>
 
+  <div id="run-error" class="run-error" hidden></div>
+
   <!-- 1. Inputs -->
   <section class="stage m1" id="stage-0">
     <h2><span class="who">Module 1 · input</span> 1. Inputs</h2>
@@ -73,13 +75,15 @@
   <!-- 7. ValidationResult -->
   <section class="stage m3" id="stage-6">
     <h2><span class="who">Module 3 → Module 1</span> 7. ValidationResult</h2>
-    <div id="result"><div class="kv muted">Available once the run is terminal.</div></div>
+    <div id="result">{% if run.result %}{% include "_result.html" %}{% else %}<div class="kv muted">Available once the run is terminal.</div>{% endif %}</div>
   </section>
 
   <!-- 8. Verdict -->
   <section class="stage vd" id="stage-7">
     <h2><span class="who">Module 1 only</span> 8. Module 1 Verdict</h2>
-    <div id="verdict"><div class="kv muted">Derived locally once the result arrives.</div></div>
+    <div id="verdict">{% if run.verdict %}<div class="verdict-word">Verdict: {{ run.verdict.outcome|upper|replace('_', ' ') }}</div>
+      <ul class="reason">{% for r in run.verdict.reasoning %}<li class="sym-{{ r.sym }}">{{ r.text }}</li>{% endfor %}</ul>
+      {% else %}<div class="kv muted">Derived locally once the result arrives.</div>{% endif %}</div>
   </section>
 
   <script id="run-meta" type="application/json">{{ {"run_id": run.run_id} | tojson }}</script>

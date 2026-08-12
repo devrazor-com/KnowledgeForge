@@ -1,0 +1,49 @@
+{# Readable ValidationResult — server-rendered so it is covered by an automated
+   test. Included inline in run.html for a terminal run, and fetched by app.js on
+   live completion. Shows what Module 3 sent faithfully (EVD-2/EVD-5); the raw
+   contract message stays inspectable beneath. #}
+{% set r = run.result %}
+{% set rv = run.result_validation %}
+{% set mv = run.gateway_result.module3_validation if run.gateway_result else None %}
+
+{% if rv and rv.passed %}<span class="badge pass">✓ Module 1 validated the inbound ValidationResult</span>
+{% elif rv %}<span class="badge fail">✗ Module 1 validation failed ({{ rv.errors|length }})</span>{% endif %}
+{% if mv and mv.passed %}<span class="badge pass-muted">Mock-only: Gateway validated the result before sending</span>
+<div class="kv muted">The “Mock-only” signal is out of band and not part of the Module 2 contract.</div>{% endif %}
+
+<div class="rk">Status</div><div class="kv"><b>{{ r.status }}</b></div>
+<div class="rk">Summary</div><p class="prose">{{ r.summary }}</p>
+
+{% if r.check_results %}
+<div class="rk">Check results</div>
+{% for c in r.check_results %}
+<div class="check">
+  <span class="badge {{ 'pass' if c.passed else 'fail' }}">{{ c.check_id }} — {{ 'passed' if c.passed else 'failed' }} (exit {{ c.exit_code if c.exit_code is not none else 'null' }})</span>
+  {% if c.output %}<pre class="output">{{ c.output }}</pre>{% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if r.artifacts %}
+<div class="rk">Artifacts <span class="muted">(names reported by Module 3; content is not carried by the contract)</span></div>
+<ul class="rlist mono">{% for a in r.artifacts %}<li>{{ a }}</li>{% endfor %}</ul>
+{% endif %}
+
+{% if r.diagnosis %}{% set d = r.diagnosis %}
+<div class="diagnosis">
+  <div class="diag-head">Diagnosis
+    <span class="interp">Module 3's interpretation — advisory only; it never determines the verdict</span></div>
+  <div class="kv"><b>Category:</b> {{ d.category }} &nbsp;·&nbsp; <b>Confidence:</b> {{ d.confidence or "—" }}</div>
+  {% if d.explanation %}<div class="rk">Explanation</div><p class="prose">{{ d.explanation }}</p>{% endif %}
+  {% if d.technical_details %}<div class="rk">Technical details</div><p class="prose">{{ d.technical_details }}</p>{% endif %}
+  {% if d.recommendations %}<div class="rk">Recommended package changes</div>
+    <ul class="rlist">{% for x in d.recommendations %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+  {% if d.evidence_references %}<div class="rk">Evidence references</div>
+    <ul class="rlist mono">{% for x in d.evidence_references %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+<details class="panel">
+  <summary>ValidationResult JSON (raw message) <button class="copy" data-target="result-raw-json">Copy</button></summary>
+  <pre id="result-raw-json">{{ r | tojson(indent=2) }}</pre>
+</details>

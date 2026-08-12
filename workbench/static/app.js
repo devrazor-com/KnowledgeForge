@@ -16,6 +16,47 @@ function jsonPanel(title, obj, open) {
     <pre id="${id}">${esc(text)}</pre></details>`;
 }
 
+function jsonPanelRaw(title, text) {
+  const id = "p" + Math.random().toString(36).slice(2);
+  return `<details class="panel" open>
+    <summary>${esc(title)} <button class="copy" data-target="${id}">Copy</button></summary>
+    <pre id="${id}">${esc(text)}</pre></details>`;
+}
+
+const ERROR_LABELS = {
+  gateway_unreachable: "Gateway unreachable",
+  start_rejected: "Start rejected by the Gateway",
+  gateway_http_error: "Gateway HTTP error",
+  protocol_error: "Protocol violation",
+  request_invalid: "Outbound request invalid",
+};
+
+function renderError(d) {
+  const label = ERROR_LABELS[d.error_kind] || d.error_kind || "Error";
+  const gwNote = d.gateway_run_created
+    ? "A Gateway run existed when this failed (mid-stream)."
+    : "No run was ever created on the Gateway.";
+  const box = document.getElementById("run-error");
+  box.hidden = false;
+  box.innerHTML = `<div class="err-title">✗ Run ended in an error state — ${esc(label)}</div>
+    <div class="err-detail">${esc(d.detail || "")}</div>
+    <div class="err-gw">${esc(gwNote)}</div>
+    ${d.payload_text ? jsonPanelRaw("Raw response from Module 3 (as received)", d.payload_text) : ""}`;
+  const st = document.getElementById("run-state");
+  if (st) { st.textContent = "error"; st.classList.add("state-error"); }
+  // Downstream stages read as "not reached" rather than sitting blank/pending.
+  const evBox = document.getElementById("events");
+  if (evBox && !evBox.querySelector(".event-row")) {
+    evBox.innerHTML = `<div class="kv muted">Not reached — no ExecutionEvents were received.</div>`;
+  }
+  document.getElementById("result").innerHTML =
+    `<div class="kv muted">Not reached — no ValidationResult was received. Module 1 did not fabricate one.</div>`;
+  document.getElementById("verdict").innerHTML =
+    `<div class="kv">Not reached — no verdict. This run ended in an error state; its effective outcome for
+     history and approval is <b>inconclusive</b> — visibly distinct from a Gateway-reported technical
+     failure, which returns a valid ValidationResult and derives <b>inconclusive</b> via rule #2.</div>`;
+}
+
 function m1Badge(v, label) {
   if (!v) return `<span class="badge wait">${esc(label)}: not validated</span>`;
   return v.passed
@@ -61,24 +102,22 @@ function renderEvent(box, data) {
   box.appendChild(div);
 }
 
-function renderResult(data) {
-  const box = document.getElementById("result");
-  let mock = "";
-  const mv = data.gateway_result && data.gateway_result.module3_validation;
-  if (mv && mv.passed) {
-    mock = `<span class="badge pass-muted">Mock-only: Gateway validated the result before sending</span>`;
-  }
-  box.innerHTML = `${m1Badge(data.result_validation, "Module 1 validated the inbound ValidationResult")} ${mock}
-    ${mock ? `<div class="kv muted">The “Mock-only” signal is out of band and not part of the Module 2 contract.</div>` : ""}
-    ${jsonPanel("ValidationResult JSON", data.result, true)}`;
+function renderVerdict(v) {
+  if (!v) return;
+  const word = v.outcome.toUpperCase().replace(/_/g, " ");
+  document.getElementById("verdict").innerHTML =
+    `<div class="verdict-word">Verdict: ${esc(word)}</div>
+     <ul class="reason">${v.reasoning.map(x => `<li class="sym-${x.sym}">${esc(x.text)}</li>`).join("")}</ul>`;
+}
 
-  const v = data.verdict;
-  if (v) {
-    const word = v.outcome.toUpperCase().replace(/_/g, " ");
-    document.getElementById("verdict").innerHTML =
-      `<div class="verdict-word">Verdict: ${esc(word)}</div>
-       <ul class="reason">${v.reasoning.map(r => `<li class="sym-${r.sym}">${esc(r.text)}</li>`).join("")}</ul>`;
-  }
+// The readable ValidationResult (status, summary, checks, artifacts, diagnosis,
+// raw JSON) is rendered SERVER-SIDE (templates/_result.html) so it is covered by
+// an automated test; app.js just fetches and injects that fragment on completion.
+async function loadResultPanel(runId) {
+  try {
+    const html = await (await fetch(`/runs/${runId}/panel`)).text();
+    document.getElementById("result").innerHTML = html;
+  } catch (_) { /* leave the placeholder if the fetch fails */ }
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -103,15 +142,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   es.addEventListener("result", e => {
-    renderResult(JSON.parse(e.data));
+    const data = JSON.parse(e.data);
+    loadResultPanel(runId);
+    renderVerdict(data.verdict);
     const st = document.getElementById("run-state"); if (st) st.textContent = "terminal";
   });
 
-  es.addEventListener("run_error", e => {
-    const d = JSON.parse(e.data);
-    document.getElementById("result").innerHTML = `<div class="notice-bad">${esc(d.error || "run error")}</div>`;
-    const st = document.getElementById("run-state"); if (st) st.textContent = "error";
-  });
+  es.addEventListener("run_error", e => renderError(JSON.parse(e.data)));
 
   es.addEventListener("done", () => es.close());
 });

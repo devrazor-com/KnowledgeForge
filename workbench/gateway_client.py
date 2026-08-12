@@ -26,6 +26,17 @@ class GatewayError(Exception):
     """Any transport-level failure talking to Module 3."""
 
 
+def _parse(body: str) -> Any:
+    """Parse a JSON body, or flag it as malformed while preserving the raw text.
+    A malformed body is not JSON, so it is kept verbatim for the operator to see."""
+    if not body:
+        return None
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError:
+        return {"_malformed": True, "_raw": body}
+
+
 def _call(method: str, path: str, payload: Any = None, timeout: float = 30.0) -> tuple[int, Any]:
     url = f"{mod3_base_url()}{path}"
     data = None
@@ -36,26 +47,24 @@ def _call(method: str, path: str, payload: Any = None, timeout: float = 30.0) ->
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            body = resp.read().decode("utf-8")
-            return resp.status, (json.loads(body) if body else None)
+            return resp.status, _parse(resp.read().decode("utf-8"))
     except urllib.error.HTTPError as e:  # 4xx/5xx: return the status and any body
-        body = e.read().decode("utf-8")
-        try:
-            parsed = json.loads(body) if body else None
-        except json.JSONDecodeError:
-            parsed = {"_raw": body}
-        return e.code, parsed
+        return e.code, _parse(e.read().decode("utf-8"))
     except (urllib.error.URLError, OSError) as e:
         raise GatewayError(f"{method} {url}: {e}") from e
 
 
-def start(request: dict, forced_outcome: str | None = None) -> tuple[int, Any]:
-    """start — POST the ValidationRequest. forced_outcome, when present, is a
-    development-only out-of-band query parameter; it is never placed in the body,
-    which carries only the contract ValidationRequest."""
-    path = "/runs"
+def start(request: dict, forced_outcome: str | None = None, fault: str | None = None) -> tuple[int, Any]:
+    """start — POST the ValidationRequest. forced_outcome and fault, when present,
+    are development-only out-of-band query parameters; they are never placed in the
+    body, which carries only the contract ValidationRequest, and are only sent in
+    dev/mock mode (the caller gates them)."""
+    params = {}
     if forced_outcome:
-        path += f"?forced_outcome={urllib.parse.quote(forced_outcome)}"
+        params["forced_outcome"] = forced_outcome
+    if fault:
+        params["fault"] = fault
+    path = "/runs" + (f"?{urllib.parse.urlencode(params)}" if params else "")
     return _call("POST", path, request)
 
 

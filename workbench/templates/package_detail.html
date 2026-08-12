@@ -47,12 +47,29 @@
             <option value="random">Random</option>
             <option value="success">Success</option>
             <option value="check_failure">Check failure</option>
+            <option value="check_failure_large">Check failure (oversized content)</option>
             <option value="knowledge_gap">Knowledge gap</option>
             <option value="technical_failure">Technical failure</option>
           </select>
         </div>
+        <div class="field poc">
+          <label><span class="tag">dev / mock only</span> Injected Gateway fault — not part of the contract</label>
+          <select name="fault">
+            <option value="none">None</option>
+            <option value="reject">Reject start (400 + reason)</option>
+            <option value="http_500">HTTP 500 on events (retried, then error)</option>
+            <option value="http_404">HTTP 404 on events</option>
+            <option value="malformed">Malformed (non-JSON) on events</option>
+            <option value="invalid_event">Schema-invalid event</option>
+            <option value="invalid_result">Schema-invalid result</option>
+            <option value="seq_gap">Sequence gap</option>
+            <option value="seq_dup">Sequence duplicate</option>
+            <option value="seq_ooo">Out-of-order events</option>
+          </select>
+        </div>
         {% endif %}
       </div>
+      {% if dev_mock %}<p class="muted">To exercise an unreachable Gateway, stop the mock process and start a run.</p>{% endif %}
       <div class="field">
         <label>Permitted capabilities</label>
         <div class="caps">

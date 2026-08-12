@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS run (
     run_state TEXT NOT NULL,
     gateway_ack_json TEXT, gateway_result_json TEXT, contract_status TEXT, outcome TEXT,
     verdict_json TEXT, result_json TEXT, result_validation_json TEXT,
-    error TEXT, created_at TEXT NOT NULL, terminal_at TEXT
+    error TEXT, error_kind TEXT, error_payload_text TEXT,
+    created_at TEXT NOT NULL, terminal_at TEXT
 );
 CREATE TABLE IF NOT EXISTS run_event (
     run_id TEXT NOT NULL, sequence INTEGER NOT NULL,
@@ -144,13 +145,16 @@ def set_run_running(run_id: str, gateway_ack: dict | None) -> None:
                     (json.dumps(gateway_ack) if gateway_ack is not None else None, run_id))
 
 
-def set_run_error(run_id: str, error: str) -> None:
-    """Record a run that could not proceed. Minimal safety only — the readable
-    Step 2B error states are not built here; this exists so a failure never
-    corrupts data or hangs the app."""
+def set_run_error(run_id: str, error_kind: str, detail: str, payload_text: str | None = None) -> None:
+    """Record a run that reached a terminal Workbench error state — no valid
+    ValidationResult was obtained. `error_kind` is Module-1-authored (not part of
+    the contract); `payload_text` holds the raw offending response as text (a
+    malformed body is not JSON). result_json is deliberately never set here."""
     with _connect() as con:
-        con.execute("UPDATE run SET run_state='error', error=?, terminal_at=? WHERE run_id=?",
-                    (error, _now(), run_id))
+        con.execute(
+            "UPDATE run SET run_state='error', error_kind=?, error=?, error_payload_text=?, "
+            "terminal_at=? WHERE run_id=?",
+            (error_kind, detail, payload_text, _now(), run_id))
 
 
 def last_sequence(run_id: str) -> int:
