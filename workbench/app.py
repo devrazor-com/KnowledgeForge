@@ -121,10 +121,19 @@ async def cancel_run(run_id: str):
 
 
 @app.get("/runs/{run_id}/stream")
-async def run_stream(run_id: str):
+async def run_stream(request: Request, run_id: str):
     if orchestrator.run_view(run_id) is None:
         raise HTTPException(404, f"Unknown run '{run_id}'")
-    return StreamingResponse(orchestrator.stream(run_id), media_type="text/event-stream")
+    # SSE resume cursor. A native EventSource sends Last-Event-ID on auto-reconnect;
+    # a fresh connection sends nothing. Parse conservatively — missing/blank/invalid
+    # falls back to 0 (full replay).
+    raw = request.headers.get("last-event-id")
+    try:
+        last_event_id = int(raw) if raw not in (None, "") else 0
+    except ValueError:
+        last_event_id = 0
+    return StreamingResponse(orchestrator.stream(run_id, last_event_id),
+                             media_type="text/event-stream")
 
 
 @app.get("/runs/{run_id}/panel")

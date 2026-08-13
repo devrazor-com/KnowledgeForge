@@ -550,12 +550,27 @@ async def recover_inflight_runs() -> None:
 # SSE + views
 # --------------------------------------------------------------------------
 
-def _sse(event: str, payload: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
+def _sse(event: str, payload: dict, id: int | None = None) -> str:
+    """One SSE frame. `id` is emitted ONLY for numbered ExecutionEvents, so it
+    becomes the browser's Last-Event-ID / resume cursor. State-snapshot frames
+    (open/recovering/cancel/result/run_error/done) carry no id and therefore never
+    advance that cursor — a reconnect resumes from the last ExecutionEvent only."""
+    head = f"id: {id}\n" if id is not None else ""
+    return f"{head}event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
-async def stream(run_id: str):
-    last_sent = 0
+async def stream(run_id: str, last_event_id: int = 0):
+    """SSE for one run. `last_event_id` is the resume cursor from the request's
+    Last-Event-ID header: replay begins strictly AFTER it, so a native EventSource
+    reconnect receives only ExecutionEvents with sequence > N and no persisted event
+    at/below N is deliberately re-sent. A fresh connection (no header) arrives as 0
+    and gets the full persisted history from the start. A cursor above the current
+    max simply waits for later events. This is NOT an exactly-once delivery
+    guarantee — only that the endpoint honours a valid cursor."""
+    try:
+        last_sent = int(last_event_id or 0)
+    except (TypeError, ValueError):
+        last_sent = 0   # conservative: malformed cursor → full replay
     run0 = db.get_run(run_id)
     ts = config.run_timeout_seconds()
     if run0 and run0.get("request_json"):
@@ -568,7 +583,7 @@ async def stream(run_id: str):
     while (_now() - started).total_seconds() < cap:
         for item in db.get_events(run_id, last_sent):
             last_sent = item["event"]["sequence"]
-            yield _sse("event", item)
+            yield _sse("event", item, id=last_sent)
         run = db.get_run(run_id)
         if run is None:
             yield _sse("stream_error", {"error": "unknown run"})

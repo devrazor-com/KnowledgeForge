@@ -211,8 +211,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   es.addEventListener("event", e => {
     const data = JSON.parse(e.data);
-    if (seen.has(data.event.sequence)) return;   // idempotent replay
-    seen.add(data.event.sequence);
+    // Dedup seam (dedup.js). With the Last-Event-ID resume cursor the server won't
+    // re-send acknowledged events; this stays as defence-in-depth against any stray
+    // duplicate reaching the render path.
+    if (!shouldRenderEvent(seen, data.event.sequence)) return;
     if (firstEvent) { box.innerHTML = ""; firstEvent = false; }
     renderEvent(box, data);
     const st = document.getElementById("run-state");
