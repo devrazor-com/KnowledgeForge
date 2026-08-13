@@ -140,6 +140,84 @@ visible as *unhealthy*. This is not to be re-litigated during implementation unl
 feature would require materially broader access than reading the operator-selected
 package root.
 
+## Durable package identity (`package_id`) is separate from content and registration (Step 3C-2, settled)
+
+History and (later) approval are keyed by a durable **`package_id`** declared in the
+manifest — NOT by `package_name` (mutable display metadata) nor by the `package_source`
+registration (mutable location) nor by `package_fingerprint` (content, which changes
+with edits). The axes are kept distinct:
+`package_id` (which logical package) → `run` → `package_fingerprint` → immutable
+content-addressed snapshot. `package_id` is required with no fallback, route-safe
+syntax, one active source per id, and cannot change silently under existing evidence
+(a manifest id change refuses runs until deliberate re-registration). Snapshots stay
+content-addressed by fingerprint and are never bound to a single `package_id` (two
+identities with identical content share one snapshot). Runs persist `package_id`; the
+disposable dev DB is recreated rather than migrated for legacy pre-identity rows. Full
+format: `workbench/PACKAGE_FORMAT.md`.
+
+**Nullable `package_source.package_id` vs non-null run identity.** `package_id` is
+mandatory for a *valid/loadable* package; it is **not** mandatory for the *registration
+row*, because a structurally-invalid (Unhealthy) source may have no readable manifest to
+obtain identity from. Such a source is registered with a NULL `package_id` so it stays
+visible with a clear reason — but a NULL-identity source is never treated as a valid
+package: it cannot start a run (`start_run` refuses when the registered identity is
+absent), and its package-history is empty (the history query needs a non-NULL id). By
+contrast, **every newly created validation run has a non-NULL `package_id`**: a run is
+only started from a registered source whose live manifest identity was validated and
+confirmed to match the registered identity. `run.package_id` is nullable in the schema
+only because we use additive schema changes against the disposable local SQLite DB
+rather than migrations — NOT to permit identity-less runs, and there is no fallback
+identity. (Enforced in `orchestrator.start_run`; proven by tests.)
+
+## Recovery status is intentionally ephemeral — not historical evidence (Step 3C-2, settled)
+
+Checked against the architecture requirements: no numbered **HST/EVD/UI** requirement
+mandates durable proof that a Workbench restart/recovery occurred. HST-1 requires
+retention of *fingerprints, evidence, and outcome*; EVD concerns raw evidence and
+diagnosis; UI concerns visibility and evidence-linking. Recovery status was
+deliberately made ephemeral in Step 3B-1 (it describes what the live poller is doing).
+Therefore history/evidence surface **only persisted provenance** — `cancel_requested`/
+`cancel_delivery` and `timed_out` — and never infer or display a "recovered" badge.
+This is CLOSED, not an open item. (`timed_out` provenance is durable via the run's
+terminal error state; a Gateway-reported timeout is a valid result via verdict rule #2.)
+
+## EVD-1 — Module 1 preserves what the contract carries; artifact CONTENT is not transmitted (settled)
+
+EVD-1: "Raw evidence — logs, transcript, diffs, check output — is preserved for every
+run and reachable from the UI." The frozen `ValidationResult` carries **artifact names**
+(e.g. `diff.patch`, `migrate.log`, `test.log`, `transcript.log`) and **check output**
+text (`check_results[].output`), plus the full ExecutionEvent log — but **not** the byte
+contents of those artifact files. Module 1 preserves and exposes **everything the frozen
+contract actually carries** (events, check outputs, the whole ValidationResult), and
+shows artifact names honestly as **references whose content was not transmitted** —
+it never implies it holds diff/log/transcript bytes that never crossed Module 2.
+
+This is the artifact-content gap ("flag A") raised during the original Module 1 planning
+and accepted then; recorded here so the 3C-3 requirement audit cannot claim Module 1
+persists artifact contents. Under this interpretation EVD-1 is **satisfied** in 3C-2:
+every piece of evidence Module 1 receives is preserved and reachable. Making artifact
+contents reachable would require an **additive Module 2 capability** (artifact content in
+the result, or a fetch-artifact operation) — a Sadia/Module 3 contract discussion, not a
+hidden Module 1 gap. See the open Gateway-owner item below. `contract/` is NOT changed.
+
+## Current-vs-execution snapshot is factual in 3C-2; formal staleness is 3C-3 (settled)
+
+3C-2 exposes only the fact "this run used fingerprint X; the currently registered
+package assembles to Y; X == Y or not." The formal **HST-2** staleness definition,
+**HST-3** stale-marking, **HST-4** stale-excluded-from-approval, and **UI-4/5/6**
+(task current status / approval control / stale-visually-distinct) are 3C-3, together
+with the validation profile.
+
+## Per-package canonical environment/capabilities belong to the 3C-3 validation profile (recorded for 3C-3)
+
+In 3C-1/3C-2 the run-start Target-environment and capability choices are global/ad-hoc.
+The **3C-3 per-package validation profile** should define the package's canonical
+`target_environment` and permitted capability set; opening a package should default to
+that profile's environment rather than presenting one undifferentiated global choice;
+ad-hoc overrides (if kept for experimentation) must be visibly distinct and must not
+silently redefine the profile; and only a run whose package/task/capabilities/
+environment context matches the current profile can later qualify as approval evidence.
+
 ---
 
 # Open items — UNRESOLVED, for a later step
@@ -155,6 +233,18 @@ does **not** auto-reissue a pre-crash unconfirmed cancellation during recovery.
 The dev mock happens to treat repeated cancel safely, but that is **mock-only**,
 not contract evidence. Question for the Gateway owner / a future additive
 contract version: define repeated-`cancel` semantics (ideally idempotent).
+
+## Artifact CONTENT is not carried by the frozen contract (Step 3C-2) — question for the Gateway owner
+
+The `ValidationResult` carries artifact **names** (`diff.patch`, `test.log`,
+`transcript.log`, …) and `check_results[].output` text, but **not** the artifact file
+**contents**. Module 1 therefore preserves and exposes everything the contract carries
+and shows artifact names as references only (see the settled EVD-1 interpretation above).
+If artifact contents must be reachable from Module 1, that needs an **additive Module 2
+capability** — e.g. artifact content embedded in the result, or a **fetch-artifact**
+operation keyed by `run_id` + artifact name — decided with Sadia. This is a
+contract-adjacent item like idempotent `start`, repeated-`cancel` semantics, result-
+availability timing, and slot/workspace isolation; it is NOT a hidden Module 1 gap.
 
 ## Ambiguous `start` cannot be reconciled under the frozen contract (Step 3B-1)
 

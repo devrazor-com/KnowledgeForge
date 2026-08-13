@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS run (
     package_name TEXT NOT NULL, package_fingerprint TEXT NOT NULL,
     task_id TEXT NOT NULL, task_fingerprint TEXT NOT NULL,
     capabilities_json TEXT NOT NULL, target_environment TEXT NOT NULL,
+    package_id TEXT,                -- durable logical identity of the package this run belongs to
     request_json TEXT NOT NULL, request_validation_json TEXT NOT NULL,
     run_state TEXT NOT NULL,
     gateway_ack_json TEXT, gateway_result_json TEXT, contract_status TEXT, outcome TEXT,
@@ -60,6 +61,9 @@ CREATE TABLE IF NOT EXISTS run_event (
 CREATE TABLE IF NOT EXISTS package_source (
     id TEXT PRIMARY KEY,           -- stable, URL-safe slug derived from the root path
     root_path TEXT NOT NULL UNIQUE, -- machine-local absolute path; NEVER in any fingerprint
+    package_id TEXT UNIQUE,        -- durable logical identity captured at registration; UNIQUE
+                                   -- enforces one ACTIVE source per package_id (NULLs allowed for
+                                   -- an unhealthy source with no resolvable id)
     added_at TEXT NOT NULL
 );
 """
@@ -127,14 +131,24 @@ def save_task(package_name: str, task: Task) -> None:
 # machine-local root path is stored here; it never participates in any fingerprint.
 # --------------------------------------------------------------------------
 
-def add_package_source(source_id: str, root_path: str) -> bool:
-    """Register a package root. Idempotent on the resolved path (UNIQUE). Returns
-    True if newly added, False if that path was already registered."""
+def add_package_source(source_id: str, root_path: str, package_id: str | None = None) -> bool:
+    """Register a package root under its durable `package_id`. Idempotent on the
+    resolved path (UNIQUE). Returns True if newly added, False if that path was
+    already registered. The caller must enforce the duplicate-package_id policy
+    before calling (see get_package_source_by_package_id)."""
     with _connect() as con:
         cur = con.execute(
-            "INSERT OR IGNORE INTO package_source (id, root_path, added_at) VALUES (?,?,?)",
-            (source_id, root_path, _now_precise()))   # sub-second: stable list ordering
+            "INSERT OR IGNORE INTO package_source (id, root_path, package_id, added_at) VALUES (?,?,?,?)",
+            (source_id, root_path, package_id, _now_precise()))   # sub-second: stable list ordering
         return cur.rowcount > 0
+
+
+def get_package_source_by_package_id(package_id: str) -> dict | None:
+    """The ACTIVE source registered under a given durable package_id, if any (used to
+    enforce the one-active-source-per-package_id policy)."""
+    with _connect() as con:
+        row = con.execute("SELECT * FROM package_source WHERE package_id=?", (package_id,)).fetchone()
+    return dict(row) if row else None
 
 
 def list_package_sources() -> list[dict]:
@@ -187,11 +201,11 @@ def create_run(run: dict) -> None:
     with _connect() as con:
         con.execute(
             "INSERT INTO run (run_id, package_name, package_fingerprint, task_id, task_fingerprint, "
-            "capabilities_json, target_environment, request_json, request_validation_json, run_state, "
-            "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "capabilities_json, target_environment, package_id, request_json, request_validation_json, "
+            "run_state, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (run["run_id"], run["package_name"], run["package_fingerprint"], run["task_id"],
              run["task_fingerprint"], json.dumps(run["capabilities"]), run["target_environment"],
-             json.dumps(run["request"]), json.dumps(run["request_validation"]),
+             run.get("package_id"), json.dumps(run["request"]), json.dumps(run["request_validation"]),
              run["run_state"], _now()))
 
 
@@ -307,6 +321,20 @@ def runs_in_state(states: tuple[str, ...]) -> list[dict]:
         rows = con.execute(
             f"SELECT * FROM run WHERE run_state IN ({','.join('?' * len(states))}) ORDER BY created_at",
             states).fetchall()
+    return [dict(r) for r in rows]
+
+
+def runs_for_package(package_id: str) -> list[dict]:
+    """All runs belonging to a durable logical package, newest-first (HST-1). Keyed by
+    the run's persisted package_id, so it spans every package_fingerprint the package
+    has had over time and is independent of the mutable source registration."""
+    with _connect() as con:
+        rows = con.execute(
+            "SELECT run_id, task_id, task_fingerprint, package_id, package_fingerprint, "
+            "target_environment, capabilities_json, run_state, outcome, contract_status, "
+            "verdict_json, error_kind, cancel_requested, cancel_requested_at, cancel_delivery, "
+            "created_at, terminal_at "
+            "FROM run WHERE package_id=? ORDER BY created_at DESC, run_id DESC", (package_id,)).fetchall()
     return [dict(r) for r in rows]
 
 

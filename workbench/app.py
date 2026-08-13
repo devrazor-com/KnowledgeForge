@@ -13,6 +13,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -21,7 +22,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from workbench import config, db, orchestrator
-from workbench.packages import catalog_status, load_source, normalize_root, source_id
+from workbench.packages import (
+    PackageError, catalog_status, load_source, normalize_root, read_manifest, source_id,
+)
 
 _NO_STORE = {"Cache-Control": "no-store"}   # the catalog/detail reflect live registry state
 
@@ -77,8 +80,23 @@ def add_package(request: Request, root_path: str = Form(...)):
     existing = db.get_package_source_by_path(norm)
     if existing is not None:                       # already registered (any id) → open it
         return RedirectResponse(url=f"/packages/{existing['id']}", status_code=303)
+    # Resolve the durable identity if the package is structurally valid. An unhealthy
+    # root (no/invalid manifest or package_id) is still registered — with a NULL id —
+    # so it stays visible as Unhealthy with a reason.
+    package_id = None
+    try:
+        package_id = read_manifest(p).package_id
+    except PackageError:
+        package_id = None
+    if package_id is not None:
+        conflict = db.get_package_source_by_package_id(package_id)
+        if conflict is not None:                   # one ACTIVE source per package_id
+            return _packages_view(
+                request, f"A package with id '{package_id}' is already registered from "
+                f"{conflict['root_path']}. Remove that registration first to register a "
+                f"different root under the same identity.", status=409)
     sid = source_id(norm)
-    db.add_package_source(sid, norm)
+    db.add_package_source(sid, norm, package_id)
     return RedirectResponse(url=f"/packages/{sid}", status_code=303)
 
 
@@ -133,10 +151,30 @@ async def start_run(
     forced = forced_outcome if (dev and forced_outcome not in (None, "", "random")) else None
     fault_val = fault if (dev and fault not in (None, "", "none")) else None
     try:
-        run_id = await orchestrator.start_run(root, src["id"], task, capabilities, environment, forced, fault_val)
+        run_id = await orchestrator.start_run(
+            root, src["id"], src.get("package_id"), task, capabilities, environment, forced, fault_val)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
+
+
+@app.get("/packages/{source_id_}/history")
+def package_history(request: Request, source_id_: str):
+    """This package's validation history (HST-1), keyed by durable package_id — spans
+    every package_fingerprint it has had, independent of the mutable source. Each row
+    is immutable evidence; the current-vs-execution snapshot flag is factual only."""
+    src = _source_or_404(source_id_)
+    view = load_source(src)
+    package_id = src.get("package_id")
+    current_fp = view.get("fingerprint")
+    runs = db.runs_for_package(package_id) if package_id else []
+    for r in runs:
+        r["capabilities"] = json.loads(r["capabilities_json"]) if r.get("capabilities_json") else []
+        r["verdict"] = json.loads(r["verdict_json"]) if r.get("verdict_json") else None
+        r["snapshot_is_current"] = current_fp is not None and r["package_fingerprint"] == current_fp
+    return templates.TemplateResponse(request, "history.html",
+                                      {"src": view, "runs": runs, "current_fingerprint": current_fp},
+                                      headers=_NO_STORE)
 
 
 @app.get("/runs/{run_id}")

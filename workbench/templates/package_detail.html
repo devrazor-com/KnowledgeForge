@@ -7,6 +7,8 @@
   <section class="card">
     <h2>Registered package</h2>
     <table class="kv">
+      <tr><td>Package id</td><td class="fp">{{ src.registered_package_id or src.package_id or "—" }}
+          <span class="muted">durable logical identity</span></td></tr>
       <tr><td>Package root</td><td class="fp">{{ src.root_path }}</td></tr>
       {% if src.entry_point %}<tr><td>Entry point</td><td class="fp">{{ src.entry_point }}</td></tr>{% endif %}
       {% if src.tasks_rel %}<tr><td>Tasks location</td><td class="fp">{{ src.tasks_rel }}</td></tr>{% endif %}
@@ -19,6 +21,7 @@
         {% if src.detail %} — {{ src.detail }}{% endif %}
       </td></tr>
     </table>
+    <p><a href="/packages/{{ src.id }}/history" class="primary" style="text-decoration:none">Validation history →</a></p>
     <form method="post" action="/packages/{{ src.id }}/remove" class="inline"
           onsubmit="return confirm('Remove this package from KnowledgeForge? This unregisters the package source. It does not delete the source files or historical validation evidence.');">
       <button type="submit" class="link-btn">remove this package source</button>

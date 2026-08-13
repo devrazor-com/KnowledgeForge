@@ -3,6 +3,7 @@
 # filename, a "validation/" tasks directory (not "tasks/"), nested knowledge
 # folders, and dependency discovery by ordinary relative Markdown links (no
 # front-matter `dependencies`). It must load through the same loader with no
-# package-specific code.
+# package-specific code. package_id is its durable logical identity.
+package_id: claims
 entry_point: claims-overview.md
 tasks: validation/

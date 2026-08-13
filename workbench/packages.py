@@ -35,6 +35,8 @@ from workbench.models import Assembly, KnowledgeFile, Manifest, Package, Problem
 _LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 MANIFEST_NAME = "package.yaml"
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+# Durable logical package identity: route-safe, lowercase alphanumerics + single hyphens.
+PACKAGE_ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
 
 class PackageError(ValueError):
@@ -72,14 +74,21 @@ def read_manifest(root: Path) -> Manifest:
         raise PackageError(f"{MANIFEST_NAME} is not valid YAML: {e}")
     if not isinstance(data, dict):
         raise PackageError(f"{MANIFEST_NAME} must be a mapping")
-    entry, tasks = data.get("entry_point"), data.get("tasks")
+    pid, entry, tasks = data.get("package_id"), data.get("entry_point"), data.get("tasks")
+    # package_id is REQUIRED with NO fallback — a durable identity is mandatory.
+    if not isinstance(pid, str) or not pid.strip():
+        raise PackageError(f"{MANIFEST_NAME} must declare a 'package_id' (durable package identity)")
+    if not PACKAGE_ID_RE.match(pid.strip()):
+        raise PackageError(
+            f"package_id '{pid}' is invalid — use lowercase letters, digits and single hyphens "
+            f"(e.g. 'claims-adjudication'), no spaces")
     if not isinstance(entry, str) or not entry.strip():
         raise PackageError(f"{MANIFEST_NAME} must declare a string 'entry_point'")
     if not isinstance(tasks, str) or not tasks.strip():
         raise PackageError(f"{MANIFEST_NAME} must declare a string 'tasks' directory")
     name = data.get("name")
     version = data.get("version")
-    return Manifest(entry_point=entry.strip(), tasks=tasks.strip(),
+    return Manifest(package_id=pid.strip(), entry_point=entry.strip(), tasks=tasks.strip(),
                     name=str(name) if name is not None else None,
                     version=str(version) if version is not None else None)
 
@@ -199,7 +208,8 @@ def assemble(root: Path, key: str) -> Assembly:
         fingerprint=fingerprint,
     )
     return Assembly(dir_name=key, package=package, ordered_paths=ordered_paths,
-                    problems=problems, entry_point=main_file, tasks_rel=tasks_rel)
+                    problems=problems, package_id=manifest.package_id,
+                    entry_point=main_file, tasks_rel=tasks_rel)
 
 
 def catalog_status(source: dict) -> dict:
@@ -213,8 +223,8 @@ def catalog_status(source: dict) -> dict:
     (load_source). Status is deliberately narrow — 'ok' means structurally usable,
     NOT the fully-verified 'healthy' the detail page can claim after assembly."""
     root = Path(source["root_path"])
-    v = {"id": source["id"], "root_path": source["root_path"],
-         "name": root.name, "version": None, "status": "unusable", "detail": None}
+    v = {"id": source["id"], "root_path": source["root_path"], "registered_package_id": source.get("package_id"),
+         "package_id": None, "name": root.name, "version": None, "status": "unusable", "detail": None}
     if not root.exists():
         v["detail"] = "Registered root no longer exists."
         return v
@@ -222,7 +232,7 @@ def catalog_status(source: dict) -> dict:
         v["detail"] = "Registered root is not a directory."
         return v
     try:
-        manifest = read_manifest(root)               # reads package.yaml only
+        manifest = read_manifest(root)               # reads package.yaml only (incl. package_id)
         entry = _safe_rel(root, manifest.entry_point)
         _safe_rel(root, manifest.tasks)              # cheap: just refuse an escaping path
     except PackageError as e:
@@ -230,6 +240,13 @@ def catalog_status(source: dict) -> dict:
         return v
     if not (root / entry).is_file():
         v["detail"] = f"declared entry_point '{manifest.entry_point}' is missing"
+        return v
+    v["package_id"] = manifest.package_id
+    # Identity integrity: the live manifest id must still match the id registered.
+    if source.get("package_id") and manifest.package_id != source["package_id"]:
+        v["detail"] = (f"package_id changed since registration "
+                       f"(registered '{source['package_id']}', manifest now '{manifest.package_id}') "
+                       f"— unregister and re-register to change identity")
         return v
     name, version = manifest.name, manifest.version
     if not name or not version:                      # one cheap read of the entry file, no traversal
@@ -254,6 +271,7 @@ def load_source(source: dict) -> dict:
       * 'problems'   — assembled, but discovery reported broken links / cycles;
       * 'healthy'    — assembled cleanly, tasks load."""
     view = {"id": source["id"], "root_path": source["root_path"], "added_at": source["added_at"],
+            "registered_package_id": source.get("package_id"), "package_id": None,
             "health": "unloadable", "detail": None, "name": Path(source["root_path"]).name,
             "version": None, "entry_point": None, "tasks_rel": None,
             "file_count": 0, "task_count": 0, "problem_count": 0, "fingerprint": None,
@@ -272,6 +290,15 @@ def load_source(source: dict) -> dict:
         return view
     except (OSError, UnicodeDecodeError) as e:
         view["detail"] = f"Cannot read package: {e}"
+        return view
+
+    view["package_id"] = assembly.package_id
+    # Identity integrity: a live-vs-registered package_id mismatch is unhealthy (an
+    # identity change requires deliberate unregister/re-register — never silent).
+    if source.get("package_id") and assembly.package_id != source["package_id"]:
+        view["detail"] = (f"package_id changed since registration "
+                          f"(registered '{source['package_id']}', manifest now '{assembly.package_id}') "
+                          f"— unregister and re-register to change identity")
         return view
 
     from workbench.tasks import load_tasks

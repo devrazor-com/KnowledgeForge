@@ -7,19 +7,43 @@ not any one example's accidental shape.
 ## A package is a root folder containing a manifest
 
 Register a package by pointing the Workbench at its **root folder**. The root must
-contain a manifest named **`package.yaml`** with exactly two required keys:
+contain a manifest named **`package.yaml`** with three required keys:
 
 ```yaml
+package_id: claims                # durable logical identity (see below)
 entry_point: claims-overview.md   # the index Markdown file, relative to the root
 tasks: validation/                # the directory of task JSON files, relative to the root
 ```
 
-Optional identity metadata (fingerprint-neutral):
+Optional display metadata (fingerprint-neutral):
 
 ```yaml
 name: Claims Adjudication
 version: "2.1"
 ```
+
+### `package_id` — durable logical identity
+
+`package_id` answers "which logical package is this?" It is **required, with no
+fallback** — it is never inferred from `name`, entry-point front-matter, folder
+name, or the registration. It is stable across content changes, name changes, root
+moves, and unregister/re-register; changing content changes the *fingerprint* but
+not the `package_id`, and moving the root changes neither.
+
+- Syntax: lowercase letters, digits and single hyphens (`^[a-z0-9]+(-[a-z0-9]+)*$`)
+  — route-safe, no spaces. Invalid or missing values fail package-format validation;
+  the package stays visible in the catalog as **Unhealthy** with a clear reason.
+- Like the rest of the manifest, it does **not** cross Module 2, is **not** in
+  `KnowledgePackage.files`, and does **not** participate in any fingerprint.
+- At most **one active registered source** may declare a given `package_id`;
+  registering a second active root with the same id is rejected. Changing a
+  registered package's `package_id` on disk is an **identity change**: Module 1
+  refuses to run against it and asks the operator to unregister/re-register
+  deliberately — identity never changes silently under existing evidence.
+
+Identity axes are kept separate: `package_id` (which logical package),
+`package_fingerprint` (what exact knowledge bytes a run used), and `source_id`/root
+(where the current registration lives).
 
 Nothing else is required or interpreted. There is **no** fixed directory layout,
 no reserved folder names, and no Business/Technical/Skills taxonomy — how an author

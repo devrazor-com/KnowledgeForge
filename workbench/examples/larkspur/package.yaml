@@ -1,6 +1,8 @@
 # Module 1 package manifest — structural configuration only.
-# Declares where the knowledge entry point and the task definitions live.
-# Not domain knowledge: excluded from KnowledgePackage.files, never crosses
-# Module 2, and never participates in any fingerprint.
+# Declares the durable logical identity (package_id) and where the knowledge entry
+# point and task definitions live. Not domain knowledge: excluded from
+# KnowledgePackage.files, never crosses Module 2, and never participates in any
+# fingerprint. package_id is stable across content/name/root changes.
+package_id: larkspur
 entry_point: larkspur-index.md
 tasks: tasks/

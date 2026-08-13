@@ -19,9 +19,12 @@ class Problem(BaseModel):
 
 class Manifest(BaseModel):
     """The minimal package manifest (package.yaml). Structural configuration only:
-    it tells Module 1 where the entry point and task definitions live. It is NOT
-    domain knowledge — it never crosses Module 2 and never enters any fingerprint.
-    `name`/`version` are optional identity metadata (also fingerprint-neutral)."""
+    it tells Module 1 the package's durable logical identity (`package_id`) and where
+    the entry point and task definitions live. It is NOT domain knowledge — it never
+    crosses Module 2 and never enters any fingerprint. `package_id` is REQUIRED with no
+    fallback (a durable identity that survives content/name/root changes); `name`/
+    `version` are optional display metadata (also fingerprint-neutral)."""
+    package_id: str
     entry_point: str
     tasks: str
     name: str | None = None
@@ -45,6 +48,7 @@ class Assembly(BaseModel):
     package: Package
     ordered_paths: list[str]
     problems: list[Problem]
+    package_id: str = ""
     entry_point: str = ""
     tasks_rel: str = "tasks/"
 

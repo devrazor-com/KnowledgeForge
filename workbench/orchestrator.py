@@ -217,13 +217,30 @@ def build_request(root: Path, key: str, task: Task, capabilities: list[str],
     }
 
 
-async def start_run(root: Path, key: str, task_id: str, capabilities: list[str],
-                    environment: str, forced_outcome: str | None,
+async def start_run(root: Path, key: str, registered_package_id: str | None, task_id: str,
+                    capabilities: list[str], environment: str, forced_outcome: str | None,
                     fault: str | None = None) -> str:
-    assembly = assemble(root, key)
+    assembly = assemble(root, key)   # reads the LIVE manifest (incl. its package_id)
+    # Identity integrity: a run is filed under the REGISTERED identity, and only after
+    # confirming the live manifest still agrees. A package_id change is an identity
+    # change, not an ordinary edit — never adopt it silently, never file evidence under
+    # an id the catalog registration does not know about.
+    if not registered_package_id:
+        raise ValueError("This package has no registered identity (package_id); "
+                         "re-register it before starting a run.")
+    if assembly.package_id != registered_package_id:
+        raise ValueError(
+            f"Package identity mismatch: this source is registered as "
+            f"'{registered_package_id}' but its manifest now declares "
+            f"'{assembly.package_id}'. No run was started. Changing package_id is an "
+            f"identity change — unregister and re-register this package deliberately.")
     task = next((t for t in load_tasks(root / assembly.tasks_rel) if t.id == task_id), None)
     if task is None:
         raise ValueError(f"Unknown task '{task_id}' in package '{key}'")
+
+    # Guarantee the exact immutable snapshot is persisted at run start (idempotent by
+    # fingerprint) — evidence must never depend on someone having opened package detail.
+    db.save_snapshot(assembly)
 
     run_id = _new_run_id()
     request = build_request(root, key, task, capabilities, environment, run_id)
@@ -232,8 +249,8 @@ async def start_run(root: Path, key: str, task_id: str, capabilities: list[str],
         "run_id": run_id, "package_name": assembly.package.name,
         "package_fingerprint": assembly.package.fingerprint, "task_id": task.id,
         "task_fingerprint": task.fingerprint, "capabilities": sorted(capabilities),
-        "target_environment": environment, "request": request,
-        "request_validation": request_validation, "run_state": "submitting",
+        "target_environment": environment, "package_id": registered_package_id,
+        "request": request, "request_validation": request_validation, "run_state": "submitting",
     })
 
     if not request_validation["passed"]:
@@ -633,5 +650,23 @@ def run_view(run_id: str) -> dict | None:
     view["gateway_run_created"] = run.get("gateway_ack_json") is not None
     view["recovery_status"] = get_recovery_status(run_id)   # ephemeral, in-memory
     view["cancel_note"] = cancel_note(run)                  # durable operator-cancel delivery state
+    view["package_id"] = run.get("package_id")
+    # Factual current-vs-execution snapshot comparison (NOT formal staleness — 3C-3):
+    # what fingerprint this run used vs what the currently-registered package assembles
+    # to now. If no source is registered under this package_id, there is no "current".
+    cur_fp = None
+    cur_src_id = None
+    if run.get("package_id"):
+        src = db.get_package_source_by_package_id(run["package_id"])
+        if src:
+            cur_src_id = src["id"]
+            try:
+                cur_fp = assemble(Path(src["root_path"]), src["id"]).package.fingerprint
+            except Exception:
+                cur_fp = None
+    view["current_package_fingerprint"] = cur_fp
+    view["current_source_registered"] = cur_fp is not None
+    view["current_source_id"] = cur_src_id
+    view["snapshot_is_current"] = cur_fp is not None and cur_fp == run.get("package_fingerprint")
     view["events"] = db.get_events(run_id, 0)
     return view

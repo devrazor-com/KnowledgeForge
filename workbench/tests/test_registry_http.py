@@ -154,6 +154,10 @@ def test_remove_keeps_other_sources_and_retains_evidence(tmp_path):
     env = _env(mock_port, tmp_path / "wb.db")
     third = tmp_path / "third" / "larkspur"
     shutil.copytree(LARKSPUR, third)
+    # A copy shares Larkspur's package_id; give it a distinct durable identity so it is
+    # a legitimate third package (not a duplicate-id registration).
+    (third / "package.yaml").write_text(
+        "package_id: larkspur-copy\nentry_point: larkspur-index.md\ntasks: tasks/\n", encoding="utf-8")
     mock = _start("tools.mock_gateway.app:app", mock_port, env)
     wb = _start("workbench.app:app", wb_port, env)
     try:

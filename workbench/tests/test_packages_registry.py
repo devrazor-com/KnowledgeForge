@@ -26,9 +26,11 @@ def _src(root: Path) -> dict:
     return {"id": source_id(str(root)), "root_path": str(root), "added_at": "2026-08-13T00:00:00Z"}
 
 
-def _pkg(root: Path, entry: str = "index.md", tasks: str = "tasks/", body: str = "# Root\n") -> Path:
+def _pkg(root: Path, entry: str = "index.md", tasks: str = "tasks/", body: str = "# Root\n",
+         pid: str = "test-pkg") -> Path:
     root.mkdir(parents=True, exist_ok=True)
-    (root / MANIFEST_NAME).write_text(f"entry_point: {entry}\ntasks: {tasks}\n", encoding="utf-8")
+    (root / MANIFEST_NAME).write_text(
+        f"package_id: {pid}\nentry_point: {entry}\ntasks: {tasks}\n", encoding="utf-8")
     (root / entry).write_text(body, encoding="utf-8")
     return root
 
@@ -46,9 +48,10 @@ def test_manifest_requires_entry_point_and_tasks(tmp_path):
 
 def test_manifest_optional_identity_and_valid(tmp_path):
     (tmp_path / MANIFEST_NAME).write_text(
-        "entry_point: idx.md\ntasks: t/\nname: Demo\nversion: '3'\n", encoding="utf-8")
+        "package_id: demo\nentry_point: idx.md\ntasks: t/\nname: Demo\nversion: '3'\n", encoding="utf-8")
     m = read_manifest(tmp_path)
-    assert m.entry_point == "idx.md" and m.tasks == "t/" and m.name == "Demo" and m.version == "3"
+    assert m.package_id == "demo" and m.entry_point == "idx.md" and m.tasks == "t/"
+    assert m.name == "Demo" and m.version == "3"
 
 
 def test_missing_manifest_raises(tmp_path):
@@ -129,10 +132,10 @@ def test_adding_manifest_does_not_change_fingerprint(tmp_path):
     root = tmp_path / "pkg"; root.mkdir()
     (root / "idx.md").write_text("# Root\n[c](child.md)\n", encoding="utf-8")
     (root / "child.md").write_text("# Child\n", encoding="utf-8")
-    (root / MANIFEST_NAME).write_text("entry_point: idx.md\ntasks: tasks/\n", encoding="utf-8")
+    (root / MANIFEST_NAME).write_text("package_id: k\nentry_point: idx.md\ntasks: tasks/\n", encoding="utf-8")
     fp1 = assemble(root, "k").package.fingerprint
-    # Add an unrelated extra key to the manifest; knowledge is unchanged.
-    (root / MANIFEST_NAME).write_text("entry_point: idx.md\ntasks: other/\nname: X\n", encoding="utf-8")
+    # Change unrelated manifest keys (tasks dir, name); knowledge is unchanged.
+    (root / MANIFEST_NAME).write_text("package_id: k\nentry_point: idx.md\ntasks: other/\nname: X\n", encoding="utf-8")
     fp2 = assemble(root, "k").package.fingerprint
     assert fp1 == fp2
 
@@ -170,7 +173,7 @@ def test_catalog_status_unusable_reasons(tmp_path):
     nomani = tmp_path / "nm"; nomani.mkdir(); (nomani / "i.md").write_text("# x\n", encoding="utf-8")
     assert catalog_status(_src(nomani))["status"] == "unusable"
     badentry = _pkg(tmp_path / "be")
-    (badentry / MANIFEST_NAME).write_text("entry_point: no.md\ntasks: t/\n", encoding="utf-8")
+    (badentry / MANIFEST_NAME).write_text("package_id: be\nentry_point: no.md\ntasks: t/\n", encoding="utf-8")
     assert catalog_status(_src(badentry))["status"] == "unusable"
 
 

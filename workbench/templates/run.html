@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Run {{ run.run_id }} · Validation Workbench{% endblock %}
-{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › {{ run.package_name }} › Run</div>{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> ›
+  {% if run.current_source_id %}<a href="/packages/{{ run.current_source_id }}/history">{{ run.package_name }}</a>{% else %}{{ run.package_name }}{% endif %} › Run</div>{% endblock %}
 {% block content %}
   <h1>Validation run <span class="muted">{{ run.run_id }}</span></h1>
   <p class="sub">Task <strong>{{ run.task_id }}</strong> against package <strong>{{ run.package_name }}</strong>.
@@ -34,8 +35,20 @@
   <!-- 2. Assembly -->
   <section class="stage m1" id="stage-1">
     <h2><span class="who">Module 1</span> 2. Module 1 Assembly</h2>
-    <div class="kv">Package fingerprint: <span class="fp">{{ run.package_fingerprint }}</span></div>
+    <div class="kv">Package id: <span class="fp">{{ run.package_id or "—" }}</span> <span class="muted">durable logical identity</span></div>
+    <div class="kv">Package fingerprint <span class="muted">(execution-time snapshot)</span>: <span class="fp">{{ run.package_fingerprint }}</span></div>
     <div class="kv">Task fingerprint: <span class="fp">{{ run.task_fingerprint }}</span></div>
+    {% if run.current_source_registered %}
+      {% if run.snapshot_is_current %}
+        <div class="kv"><span class="badge ok">current snapshot</span> This run used the package content currently registered under <code>{{ run.package_id }}</code>.</div>
+      {% else %}
+        <div class="kv"><span class="badge warn">snapshot differs from current</span>
+           The package now registered under <code>{{ run.package_id }}</code> assembles to
+           <span class="fp">{{ run.current_package_fingerprint }}</span>. Factual only — staleness and approval arrive in a later step.</div>
+      {% endif %}
+    {% else %}
+      <div class="kv muted">No package is currently registered under <code>{{ run.package_id or "—" }}</code>, so there is no current fingerprint to compare against.</div>
+    {% endif %}
   </section>
 
   <!-- 3. ValidationRequest -->

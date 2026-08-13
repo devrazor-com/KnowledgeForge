@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ src.name }} · History · Validation Workbench{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> ›
+  <a href="/packages/{{ src.id }}">{{ src.name }}</a> › History</div>{% endblock %}
+{% block content %}
+  <h1>{{ src.name }} <span class="muted">— validation history</span></h1>
+  <p class="sub">All runs for the durable package
+     <code>{{ src.registered_package_id or src.package_id or "—" }}</code>, newest first — across every
+     content version this package has had. Each row is immutable evidence tied to the exact snapshot
+     that run used.
+     {% if current_fingerprint %}The package currently assembles to
+     <span class="fp">{{ current_fingerprint[:23] }}…</span>.{% endif %}</p>
+
+  {% if not runs %}
+    <div class="empty">No runs yet for this package.</div>
+  {% else %}
+  <table class="grid">
+    <thead>
+      <tr><th>Run</th><th>Task</th><th>Outcome</th><th>State</th><th>Environment</th>
+          <th>Snapshot</th><th>Started</th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td><a href="/runs/{{ r.run_id }}" class="fp">{{ r.run_id }}</a></td>
+        <td>{{ r.task_id }}</td>
+        <td>
+          {% if r.run_state == 'terminal' and r.verdict %}
+            <span class="badge {{ 'pass' if r.verdict.outcome == 'passed' else 'warn' }}">{{ r.verdict.outcome|upper|replace('_',' ') }}</span>
+            <span class="muted">rule {{ r.verdict.rule }}</span>
+          {% elif r.run_state == 'error' %}
+            <span class="badge fail">{{ r.error_kind or 'error' }}</span> <span class="muted">→ inconclusive</span>
+          {% else %}<span class="badge muted-badge">{{ r.run_state }}</span>{% endif %}
+          {% if r.cancel_requested %}<div class="muted">cancel: {{ r.cancel_delivery or 'requested' }}</div>{% endif %}
+        </td>
+        <td><span class="badge {{ 'muted-badge' if r.run_state in ('terminal','error') else 'warn' }}">{{ r.run_state }}</span></td>
+        <td>{{ r.target_environment }}
+            <div class="muted">{% for c in r.capabilities %}{{ c }}{% if not loop.last %}, {% endif %}{% endfor %}</div></td>
+        <td class="fp">{{ r.package_fingerprint[:21] }}…
+            {% if r.snapshot_is_current %}<span class="badge ok">current</span>
+            {% elif current_fingerprint %}<span class="badge warn">older snapshot</span>{% endif %}</td>
+        <td class="muted">{{ r.created_at[:19]|replace('T',' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">“current” / “older snapshot” is a factual fingerprint comparison, not a staleness or
+     approval judgment — those arrive in a later step.</p>
+  {% endif %}
+{% endblock %}

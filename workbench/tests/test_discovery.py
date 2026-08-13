@@ -21,7 +21,7 @@ def _write(root: Path, rel: str, text: str) -> None:
 
 def _manifest(root: Path, entry: str = "index.md") -> None:
     """Minimal package.yaml for an inline temp package (tasks dir need not exist)."""
-    _write(root, "package.yaml", f"entry_point: {entry}\ntasks: tasks/\n")
+    _write(root, "package.yaml", f"package_id: temp-pkg\nentry_point: {entry}\ntasks: tasks/\n")
 
 
 def test_order_is_main_first_then_sorted():
