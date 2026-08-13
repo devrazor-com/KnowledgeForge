@@ -162,15 +162,29 @@ def test_cancel_unknown_run(servers_long):
 
 
 def test_cancel_gateway_unreachable(tmp_path):
+    """Cancel when the Gateway is unreachable. Originally (Step 3A) this checked only
+    the backend response and that the run was not falsely terminated — it did NOT
+    verify the operator could still act afterwards, nor how delivery knowledge was
+    represented. That was the gap behind the button-hiding defect; this now also
+    asserts the run stays cancellable and the delivery state is recorded."""
     procs, wb, mock_port = _make_servers(tmp_path, timeout_seconds=30, guard_seconds=1)
     wb_proc, mock_proc = procs
     try:
         run_id = _start_run(wb, forced="success")
         _poll(wb, run_id, lambda v: v["run_state"] == "running", timeout=15)
-        _stop(mock_proc)                              # Gateway becomes unreachable
+        _stop(mock_proc)                              # Gateway killed → connection refused
         status, resp = _post(wb, f"/runs/{run_id}/cancel")
-        assert status == 200 and resp.get("unreachable") is True
-        assert "could not reach" in resp.get("message", "").lower()
+        # A killed Gateway is provable non-delivery: 'undelivered', not a success.
+        assert status == 200 and resp["delivery"] == "undelivered" and resp["ok"] is False
+        assert "could not reach" in resp["message"].lower()
+        # Gap now closed: run stays non-terminal, delivery knowledge recorded, and
+        # the Cancel control remains available for a retry.
+        v = _get(wb, f"/api/runs/{run_id}")
+        assert v["run_state"] == "running"                     # not falsely terminated
+        assert v["cancel_requested"] and v["cancel_delivery"] == "undelivered"
+        assert v["cancel_note"]["delivery"] == "undelivered"
+        with urllib.request.urlopen(f"http://127.0.0.1:{wb}/runs/{run_id}", timeout=5) as r:
+            assert 'id="cancel-btn"' in r.read().decode()      # control still usable
     finally:
         _stop(wb_proc)
 

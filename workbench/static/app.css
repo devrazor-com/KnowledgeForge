@@ -106,6 +106,20 @@ ul.reason li { padding: 2px 0; font-size: 13px; }
 .cancel-btn { margin-left: 10px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
               padding: 3px 10px; border-radius: 7px; border: 1px solid #e6b3ba; background: #fff; color: #b02a37; }
 .cancel-btn:disabled { opacity: .5; cursor: not-allowed; }
+/* ---- ephemeral recovery status ---- */
+.recovery-note { border: 1px solid #ecc19a; background: #fdf2e2; border-left: 5px solid #d97706;
+                 border-radius: 10px; padding: 12px 14px; margin: 0 0 16px; color: #7a4310; font-size: 13px; }
+/* ---- durable operator-cancel delivery state (visually distinct per state) ---- */
+.cancel-note { border: 1px solid #cbd5e1; border-left: 5px solid #64748b; border-radius: 10px;
+               padding: 12px 14px; margin: 0 0 16px; font-size: 13px; }
+.cancel-note.cd-undelivered, .cancel-note.cd-rejected {   /* the operator's request did not take effect */
+  border-color: #e6b3ba; background: #fbe9eb; border-left-color: #b02a37; color: #8a2029; }
+.cancel-note.cd-unknown {                                 /* genuinely uncertain — conservative */
+  border-color: #ecc19a; background: #fdf2e2; border-left-color: #d97706; color: #7a4310; }
+.cancel-note.cd-acknowledged {                            /* acknowledged; awaiting cancelled result */
+  border-color: #b6d4ea; background: #eaf3fb; border-left-color: #2563eb; color: #1e40af; }
+.err-guidance { margin: 8px 0 2px; font-size: 13px; }
+.err-guidance-warn { margin-top: 6px; color: #8a2029; }
 
 /* ---- readable ValidationResult + diagnosis (EVD-2/EVD-5) ---- */
 .rk { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;

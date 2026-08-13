@@ -84,3 +84,24 @@ def gateway_http_timeout() -> float:
 # Fixed, small budget for the post-timeout cleanup cancel only. Not the socket
 # timeout, not the run deadline.
 GATEWAY_CANCEL_CLEANUP_TIMEOUT = 5.0
+
+
+# --------------------------------------------------------------------------
+# Result-retrieval allowance (Step 3B-1). Once a run reaches a terminal event,
+# execution is over; the contract's `result` op "returns nothing until the run
+# reaches a terminal state" but does NOT guarantee the ValidationResult is
+# available the instant the terminal event is emitted. This is a bounded,
+# AUTHORITATIVE allowance for the Gateway to publish the result — conceptually
+# separate from the execution deadline (it is not extra execution time). The same
+# policy is used by the normal poller AND by restart recovery.
+#   * each result call is bounded by min(GATEWAY_HTTP_TIMEOUT, remaining window);
+#   * no new retry begins once the window is exhausted;
+#   * on exhaustion Module 1 classifies by what actually failed (2B taxonomy).
+# --------------------------------------------------------------------------
+
+def result_retrieval_window_seconds() -> float:
+    return float(os.environ.get("WORKBENCH_RESULT_RETRIEVAL_WINDOW_SECONDS", "30"))
+
+
+def result_retrieval_interval() -> float:
+    return float(os.environ.get("WORKBENCH_RESULT_RETRIEVAL_INTERVAL", "0.5"))

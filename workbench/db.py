@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS run (
     verdict_json TEXT, result_json TEXT, result_validation_json TEXT,
     error TEXT, error_kind TEXT, error_payload_text TEXT,
     accepted_at TEXT, cancel_requested INTEGER NOT NULL DEFAULT 0, cancel_requested_at TEXT,
+    cancel_delivery TEXT,
     created_at TEXT NOT NULL, terminal_at TEXT
 );
 CREATE TABLE IF NOT EXISTS run_event (
@@ -157,9 +158,27 @@ def set_run_running(run_id: str, gateway_ack: dict | None) -> None:
 
 
 def set_cancel_requested(run_id: str) -> None:
+    """Record OPERATOR cancellation intent (never the post-timeout cleanup cancel).
+    Delivery knowledge is tracked separately by set_cancel_delivery()."""
     with _connect() as con:
         con.execute("UPDATE run SET cancel_requested=1, cancel_requested_at=? WHERE run_id=?",
                     (_now(), run_id))
+
+
+def set_cancel_delivery(run_id: str, state: str) -> None:
+    """Record what Module 1 knows about the delivery of the operator's cancellation
+    request. `state` is one of unknown | undelivered | rejected | acknowledged.
+
+    STICKY 'acknowledged': once the Gateway has acknowledged at least one cancel
+    request, a later failed/rejected/unknown attempt must NOT erase that durable
+    fact. Only 'acknowledged' is sticky; unknown/undelivered/rejected move freely as
+    new explicit attempts provide fresh evidence. Enforced in the WHERE clause so
+    the rule holds regardless of caller ordering."""
+    with _connect() as con:
+        con.execute(
+            "UPDATE run SET cancel_delivery=? WHERE run_id=? "
+            "AND (cancel_delivery IS NULL OR cancel_delivery != 'acknowledged' OR ?='acknowledged')",
+            (state, run_id, state))
 
 
 def set_run_error(run_id: str, error_kind: str, detail: str, payload_text: str | None = None) -> bool:
@@ -229,3 +248,27 @@ def get_events(run_id: str, since: int = 0) -> list[dict]:
             "WHERE run_id=? AND sequence>? ORDER BY sequence", (run_id, since)).fetchall()
     return [{"event": json.loads(r["event_json"]),
              "m1_validation": json.loads(r["m1_validation_json"])} for r in rows]
+
+
+# --------------------------------------------------------------------------
+# Restart recovery (Step 3B-1) — read-only reconciliation helpers, no new columns
+# --------------------------------------------------------------------------
+
+def runs_in_state(states: tuple[str, ...]) -> list[dict]:
+    """All runs whose run_state is one of `states` (used at startup to find
+    non-terminal local attempts to reconcile)."""
+    with _connect() as con:
+        rows = con.execute(
+            f"SELECT * FROM run WHERE run_state IN ({','.join('?' * len(states))}) ORDER BY created_at",
+            states).fetchall()
+    return [dict(r) for r in rows]
+
+
+def last_event_type(run_id: str) -> str | None:
+    """The event_type of the highest-sequence persisted event, or None if there
+    are no events yet."""
+    with _connect() as con:
+        row = con.execute(
+            "SELECT event_type FROM run_event WHERE run_id=? ORDER BY sequence DESC LIMIT 1",
+            (run_id,)).fetchone()
+    return row["event_type"] if row else None

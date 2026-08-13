@@ -12,6 +12,8 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,8 +29,11 @@ templates = Jinja2Templates(directory=str(config.BASE_DIR / "templates"))
 
 
 @app.on_event("startup")
-def _startup() -> None:
+async def _startup() -> None:
     db.init()
+    # Reconcile any non-terminal local attempts left by a previous process. Runs as
+    # a background task so startup is never blocked.
+    asyncio.create_task(orchestrator.recover_inflight_runs())
 
 
 def _assemble_dir(dir_name: str):

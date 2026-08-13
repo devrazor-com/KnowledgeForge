@@ -29,12 +29,28 @@ const ERROR_LABELS = {
   gateway_http_error: "Gateway HTTP error",
   protocol_error: "Protocol violation",
   request_invalid: "Outbound request invalid",
+  timed_out: "Module 1 timeout",
+  start_unresolved: "Start unresolved (interrupted before acceptance)",
 };
+
+// Extra guidance shown under specific error kinds.
+function errorGuidance(kind) {
+  if (kind !== "start_unresolved") return "";
+  return `<div class="err-guidance">
+    <b>What to do:</b> this local attempt cannot be recovered safely, so the task is still unvalidated.
+    Start a <b>fresh validation run</b> — it gets a new <code>run_id</code> and is a new attempt, not a retry of this one.
+    <div class="err-guidance-warn">Because the frozen contract provides no idempotent <code>start</code> or lookup,
+    the original ambiguous Gateway execution <b>may still be running</b>. Marking this attempt terminal resolves
+    Module 1's ambiguity; it does not prove the remote work stopped. A fresh run could therefore run alongside an
+    orphaned execution for the same task until the Gateway reclaims it.</div></div>`;
+}
 
 function renderError(d) {
   const label = ERROR_LABELS[d.error_kind] || d.error_kind || "Error";
   let gwNote;
-  if (d.error_kind === "timed_out") {
+  if (d.error_kind === "start_unresolved") {
+    gwNote = "Module 1 cannot determine whether Module 3 created a run for this attempt.";
+  } else if (d.error_kind === "timed_out") {
     // A deadline expiry is not a mid-stream protocol failure: the Gateway may
     // still be running normally; Module 1 simply stopped waiting.
     gwNote = "A run exists on the Gateway. Module 1 stopped waiting when its deadline expired and sent a best-effort cancellation request for cleanup.";
@@ -48,6 +64,7 @@ function renderError(d) {
   box.innerHTML = `<div class="err-title">✗ Run ended in an error state — ${esc(label)}</div>
     <div class="err-detail">${esc(d.detail || "")}</div>
     <div class="err-gw">${esc(gwNote)}</div>
+    ${errorGuidance(d.error_kind)}
     ${d.payload_text ? jsonPanelRaw("Raw response from Module 3 (as received)", d.payload_text) : ""}`;
   const st = document.getElementById("run-state");
   if (st) { st.textContent = "error"; st.classList.add("state-error"); }
@@ -136,19 +153,59 @@ document.addEventListener("DOMContentLoaded", () => {
   const seen = new Set();
   let firstEvent = true;
 
-  // Cancel button (live runs only). It never writes the terminal state — the
-  // Gateway reports cancelled and the poller records it; this just asks.
+  // Cancel button (present only while the run is non-terminal — the server renders
+  // it iff run_state is submitting/running). It never writes the terminal state:
+  // the Gateway reports cancelled and the poller records it; this just asks.
+  //
+  // A failed/rejected/unknown attempt is NOT a cancellation and must never hide or
+  // permanently disable the control — the operator can always retry while the run
+  // is non-terminal. The button is disabled only transiently, during the request.
   const cancelBtn = document.getElementById("cancel-btn");
-  const cancelNote = document.getElementById("cancel-note");
-  function hideCancel() { if (cancelBtn) cancelBtn.style.display = "none"; }
+  const cancelStatus = document.getElementById("cancel-status");   // transient inline note
+  const cancelNoteBox = document.getElementById("cancel-note");    // durable delivery-state banner
+  function hideCancel() { if (cancelBtn) cancelBtn.style.display = "none"; }   // terminal only
+
+  // Durable operator-cancel delivery banner, driven by persisted state
+  // (POST response and the `cancel` SSE event carry the same {delivery, message}).
+  function renderCancelNote(d) {
+    if (!cancelNoteBox) return;
+    if (d && d.message) {
+      cancelNoteBox.hidden = false;
+      cancelNoteBox.className = "cancel-note cd-" + (d.delivery || "unknown");
+      cancelNoteBox.textContent = d.message;
+    } else {
+      cancelNoteBox.hidden = true; cancelNoteBox.textContent = "";
+    }
+  }
+
   if (cancelBtn) cancelBtn.onclick = async () => {
-    cancelBtn.disabled = true;
-    if (cancelNote) cancelNote.textContent = "Cancelling…";
+    cancelBtn.disabled = true;                                     // transient — re-enabled below
+    if (cancelStatus) cancelStatus.textContent = "Requesting cancellation…";
     try {
       const d = await (await fetch(`/runs/${runId}/cancel`, { method: "POST" })).json();
-      if (cancelNote) cancelNote.textContent = d.message || "";
-    } catch (_) { if (cancelNote) cancelNote.textContent = "Cancel request failed."; }
+      renderCancelNote(d);
+      // attempt_message is present only when this attempt differs from the durable
+      // state (a failed retry after an earlier acknowledgement) — surface it briefly.
+      if (cancelStatus) cancelStatus.textContent = d.attempt_message || "";
+    } catch (_) {
+      if (cancelStatus) cancelStatus.textContent = "Cancel request failed to send.";
+    } finally {
+      cancelBtn.disabled = false;                                 // keep retry available while non-terminal
+    }
   };
+
+  // Ephemeral recovery status (restart recovery). {} clears the note.
+  const recBox = document.getElementById("recovery-note");
+  function renderRecovering(d) {
+    if (!recBox) return;
+    if (d && d.message) {
+      recBox.hidden = false;
+      recBox.className = "recovery-note" + (d.kind === "cancel_ambiguous" ? " cancel-amb" : "");
+      recBox.textContent = d.message;
+    } else {
+      recBox.hidden = true; recBox.textContent = "";
+    }
+  }
 
   const es = new EventSource(`/runs/${runId}/stream`);
 
@@ -162,15 +219,19 @@ document.addEventListener("DOMContentLoaded", () => {
     if (st) st.textContent = "running";
   });
 
+  es.addEventListener("recovering", e => renderRecovering(JSON.parse(e.data)));
+
+  es.addEventListener("cancel", e => renderCancelNote(JSON.parse(e.data)));
+
   es.addEventListener("result", e => {
     const data = JSON.parse(e.data);
     loadResultPanel(runId);
     renderVerdict(data.verdict);
     const st = document.getElementById("run-state"); if (st) st.textContent = "terminal";
-    hideCancel();
+    renderRecovering(null); hideCancel();
   });
 
-  es.addEventListener("run_error", e => { renderError(JSON.parse(e.data)); hideCancel(); });
+  es.addEventListener("run_error", e => { renderError(JSON.parse(e.data)); renderRecovering(null); hideCancel(); });
 
-  es.addEventListener("done", () => { es.close(); hideCancel(); });
+  es.addEventListener("done", () => { es.close(); renderRecovering(null); hideCancel(); });
 });

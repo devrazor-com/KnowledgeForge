@@ -43,6 +43,7 @@ FIXTURES = HERE / "fixtures"
 
 TERMINAL_EVENTS = {"completed", "failed", "cancelled"}
 EVENT_DELAY_SECONDS = 0.6
+DELAYED_RESULT_NULLS = 4   # `delayed_result` fault: this many null result polls before publishing
 
 OUTCOME_POOL = {
     "success": ("events-success.json", "result-success.json"),
@@ -113,18 +114,26 @@ _POOL = _load_pool()
 
 
 class Run:
-    def __init__(self, run_id: str, outcome: str, fault: str | None):
+    def __init__(self, run_id: str, outcome: str, fault: str | None, cancel_fault: str | None = None):
         self.run_id = run_id
         self.planned = _POOL[outcome]["events"]
         self.result_template = _POOL[outcome]["result"]
         self.fault = fault
+        self.cancel_fault = cancel_fault   # dev-only: how the cancel op should misbehave
         self.emitted: list[dict] = []
         self.result: dict | None = None
         self.terminal = False
+        self.result_calls = 0   # for the delayed_result fault
         self.lock = asyncio.Lock()
 
 
 RUNS: dict[str, Run] = {}
+
+# Development/test introspection ONLY — not contract behaviour. Lets recovery tests
+# prove no duplicate `start` and distinguish a reissued user cancel from a
+# post-timeout cleanup cancel. A real Gateway exposes none of this.
+STARTS: dict[str, int] = {}
+CANCELS: dict[str, int] = {}
 
 
 def _mk_event(run: Run, template: dict, sequence: int) -> dict:
@@ -196,25 +205,29 @@ app = FastAPI(title="Mock Execution Gateway (dev-only)")
 
 @app.get("/")
 def root():
-    return {"module": "mock_gateway", "outcomes": list(_POOL), "active_runs": len(RUNS)}
+    return {"module": "mock_gateway", "outcomes": list(_POOL), "active_runs": len(RUNS),
+            "starts": STARTS, "cancels": CANCELS}  # dev-only introspection
 
 
 @app.post("/runs")
-async def start(request: dict = Body(...), forced_outcome: str | None = None, fault: str | None = None):
+async def start(request: dict = Body(...), forced_outcome: str | None = None,
+                fault: str | None = None, cancel_fault: str | None = None):
     errs = _errors(_REQUEST, request)
     if errs:
         return JSONResponse(status_code=400, content={
             "rejected": True, "reason": "ValidationRequest failed schema validation on receipt",
             "module3_validation": {"passed": False, "errors": errs}})
 
+    run_id = request["run_id"]
+    STARTS[run_id] = STARTS.get(run_id, 0) + 1   # count every start invocation for this run_id
+
     if fault == "reject":  # injected: reject the start with a reason; no run is created
         return JSONResponse(status_code=400, content={
             "rejected": True, "reason": "Injected fault: the Gateway declined this request for testing.",
             "module3_validation": {"passed": True, "message": "Mock validated the request; then rejected it (injected)"}})
 
-    run_id = request["run_id"]
     outcome = forced_outcome if forced_outcome in _POOL else random.choice(RANDOM_OUTCOMES)
-    run = Run(run_id, outcome, fault)
+    run = Run(run_id, outcome, fault, cancel_fault)
     RUNS[run_id] = run
     asyncio.create_task(_emit(run))
     return JSONResponse({
@@ -255,6 +268,13 @@ async def result(run_id: str):
         return JSONResponse({"result": {
             "run_id": run_id, "status": "BOGUS_STATUS", "summary": "injected schema-invalid result",
             "check_results": [], "artifacts": [], "duration_seconds": 1}, "module3_validation": None})
+    if run.fault == "delayed_result" and terminal:
+        # Terminal, but the result is not published immediately: return null for the
+        # first few polls, then the real result (exercises the retrieval allowance).
+        async with run.lock:
+            if run.result_calls < DELAYED_RESULT_NULLS:
+                run.result_calls += 1
+                return JSONResponse({"result": None, "module3_validation": None})
     async with run.lock:
         if not run.terminal or run.result is None:
             return JSONResponse({"result": None, "module3_validation": None})
@@ -267,10 +287,22 @@ async def result(run_id: str):
 async def cancel(run_id: str):
     """cancel — really interrupt an in-flight run: stop the sequence, emit a
     cancelled event as the terminal event, and make a status:cancelled result
-    available. The emit loop stops on its next tick (it checks run.terminal)."""
+    available. The emit loop stops on its next tick (it checks run.terminal).
+
+    A run started with the dev-only `cancel_fault` makes the Gateway receive this
+    request and either decline it (4xx) or error (5xx) — so cancel-delivery tests
+    can exercise 'rejected' and 'unknown' through the Workbench's own cancel call
+    (which carries no query params). The request DID reach the mock either way, so
+    the CANCELS counter still increments."""
+    CANCELS[run_id] = CANCELS.get(run_id, 0) + 1   # count every cancel invocation for this run_id
     run = RUNS.get(run_id)
     if run is None:
         raise HTTPException(404, "unknown run_id")
+    if run.cancel_fault == "reject":    # received and declined — Module 1 records 'rejected'
+        return JSONResponse(status_code=400, content={
+            "cancelled": False, "reason": "Injected fault: the Gateway declined the cancellation request."})
+    if run.cancel_fault == "http_500":  # received but errored — Module 1 remains 'unknown'
+        return JSONResponse(status_code=500, content={"error": "injected internal server error on cancel"})
     async with run.lock:
         if run.terminal:
             return JSONResponse({"run_id": run_id, "cancelled": False, "already_terminal": True,

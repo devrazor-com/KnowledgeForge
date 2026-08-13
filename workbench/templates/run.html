@@ -6,7 +6,7 @@
   <p class="sub">Task <strong>{{ run.task_id }}</strong> against package <strong>{{ run.package_name }}</strong>.
      State: <span class="badge" id="run-state">{{ run.run_state }}</span>
      {% if run.run_state in ('submitting', 'running') %}<button id="cancel-btn" class="cancel-btn">Cancel run</button>{% endif %}
-     <span id="cancel-note" class="muted"></span></p>
+     <span id="cancel-status" class="muted"></span></p>
 
   <div class="legend">
     <span><span class="swatch m1"></span> Produced by Module 1</span>
@@ -15,6 +15,12 @@
     <span><span class="swatch vd"></span> Conclusion — Module 1 only</span>
   </div>
   <div class="flow" id="flow"></div>
+
+  <div id="recovery-note" class="recovery-note"
+       {% if not run.recovery_status %}hidden{% endif %}>{% if run.recovery_status %}{{ run.recovery_status.message }}{% endif %}</div>
+
+  <div id="cancel-note" class="cancel-note cd-{{ run.cancel_note.delivery if run.cancel_note else 'none' }}"
+       {% if not run.cancel_note %}hidden{% endif %}>{% if run.cancel_note %}{{ run.cancel_note.message }}{% endif %}</div>
 
   <div id="run-error" class="run-error" hidden></div>
 
