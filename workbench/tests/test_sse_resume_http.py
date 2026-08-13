@@ -21,6 +21,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -69,7 +71,7 @@ def _env(mock_port, dbpath):
 
 
 def _post_run(wb_port, forced="success"):
-    fields = [("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+    fields = [("source_id", _regutil.ensure_larkspur(wb_port)), ("task", "LARK-TASK-001"),
               ("environment", "larkspur-sandbox"), ("capabilities", "filesystem"), ("forced_outcome", forced)]
 
     class _NR(urllib.request.HTTPRedirectHandler):

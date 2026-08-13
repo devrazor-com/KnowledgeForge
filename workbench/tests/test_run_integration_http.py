@@ -17,6 +17,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -68,7 +70,7 @@ def test_complete_run_over_real_http(tmp_path):
 
         # Start a run over HTTP; read run_id from the 303 redirect (don't follow it).
         body = urllib.parse.urlencode([
-            ("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+            ("source_id", _regutil.ensure_larkspur(wb_port)), ("task", "LARK-TASK-001"),
             ("environment", "larkspur-sandbox"),
             ("capabilities", "filesystem"), ("capabilities", "shell"),
             ("forced_outcome", "success"),

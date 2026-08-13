@@ -24,7 +24,7 @@ DATA_DIR = BASE_DIR / "data"
 DEFAULT_MOD3_BASE_URL = "http://127.0.0.1:8003"
 
 # Execution conditions offered when starting a run.
-ENVIRONMENTS = ["larkspur-sandbox"]
+ENVIRONMENTS = ["larkspur-sandbox", "claims-sandbox"]
 CAPABILITIES = ["filesystem", "shell", "database-read", "web-search"]
 
 CONTRACT_VERSION = "0.1"

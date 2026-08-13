@@ -33,6 +33,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -85,7 +87,7 @@ def _wb_env(mock_port, dbpath, timeout=180, guard=1, http_timeout=None):
 
 
 def _post_run(wb_port, forced=None, fault=None):
-    fields = [("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+    fields = [("source_id", _regutil.ensure_larkspur(wb_port)), ("task", "LARK-TASK-001"),
               ("environment", "larkspur-sandbox"), ("capabilities", "filesystem")]
     if forced:
         fields.append(("forced_outcome", forced))
@@ -178,8 +180,9 @@ def _seed_running(dbpath, mock_port, run_id, cancel_requested=0, cancel_delivery
     os.environ["WORKBENCH_DB"] = str(dbpath)
     from workbench import config, db, orchestrator
     from workbench.tasks import load_tasks
-    task = next(t for t in load_tasks(config.PACKAGES_DIR / "larkspur") if t.id == "LARK-TASK-001")
-    request = orchestrator.build_request("larkspur", task, ["filesystem"], "larkspur-sandbox", run_id)
+    root = config.PACKAGES_DIR / "larkspur"
+    task = next(t for t in load_tasks(root / "tasks") if t.id == "LARK-TASK-001")
+    request = orchestrator.build_request(root, "larkspur", task, ["filesystem"], "larkspur-sandbox", run_id)
     request["execution_context"]["timeout_seconds"] = timeout
     db.init()
     db.create_run({"run_id": run_id, "package_name": request["package"]["name"],

@@ -1,0 +1,12 @@
+{
+  "run_id": "mock",
+  "status": "completed",
+  "summary": "Reordered adjudication to subtract the coverage deductible before applying the limit; approved, partial, and denied decisions now match the adjudication rules in the knowledge package.",
+  "check_results": [
+    { "check_id": "CLAIM-CHK-SCHEMA", "passed": true, "exit_code": 0, "output": "1 migration applied: claim.decision_reason" },
+    { "check_id": "CLAIM-CHK-TESTS", "passed": true, "exit_code": 0, "output": "88 passed, 0 failed" }
+  ],
+  "diagnosis": null,
+  "artifacts": ["diff.patch", "migrate.log", "test.log", "transcript.log"],
+  "duration_seconds": 372.0
+}

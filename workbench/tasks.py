@@ -1,7 +1,7 @@
 """Task loading — TSK-1…TSK-4. Tasks are JSON files, one per file, living in the
-package folder's tasks/ subdirectory (versioned alongside the package). Each is
-fingerprinted; active/inactive state (TSK-5) is operator state and lives in the
-database, not in the task file or its fingerprint.
+directory the package manifest declares (`tasks:`), versioned alongside the package.
+Each is fingerprinted; active/inactive state (TSK-5) is operator state and lives in
+the database, not in the task file or its fingerprint.
 """
 
 from __future__ import annotations
@@ -16,13 +16,13 @@ _ALLOWED = ["id", "title", "description", "business_area", "difficulty",
             "acceptance_criteria", "checks", "metadata"]
 
 
-def load_tasks(pkg_dir: Path) -> list[Task]:
-    """Load and fingerprint every task JSON in <package>/tasks/, sorted by id.
+def load_tasks(tasks_dir: Path) -> list[Task]:
+    """Load and fingerprint every task JSON in the given tasks directory, sorted by
+    id. `tasks_dir` is resolved by the caller from the manifest (root / manifest.tasks).
 
     The `active` flag defaults to True here; the app layer overlays the persisted
     state before display.
     """
-    tasks_dir = pkg_dir / "tasks"
     if not tasks_dir.is_dir():
         return []
     tasks: list[Task] = []

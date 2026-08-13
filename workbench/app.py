@@ -13,6 +13,7 @@ Run from the repository root:
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -20,8 +21,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from workbench import config, db, orchestrator
-from workbench.packages import PackageError, assemble, list_package_dirs
-from workbench.tasks import load_tasks
+from workbench.packages import catalog_status, load_source, normalize_root, source_id
+
+_NO_STORE = {"Cache-Control": "no-store"}   # the catalog/detail reflect live registry state
 
 app = FastAPI(title="KnowledgeForge — Validation Workbench")
 app.mount("/static", StaticFiles(directory=str(config.BASE_DIR / "static")), name="static")
@@ -32,73 +34,106 @@ templates = Jinja2Templates(directory=str(config.BASE_DIR / "templates"))
 async def _startup() -> None:
     db.init()
     # Reconcile any non-terminal local attempts left by a previous process. Runs as
-    # a background task so startup is never blocked.
+    # a background task so startup is never blocked. (The registry is NOT auto-
+    # populated: the real Workbench starts empty and the operator registers roots.)
     asyncio.create_task(orchestrator.recover_inflight_runs())
 
 
-def _assemble_dir(dir_name: str):
-    pkg_dir = (config.PACKAGES_DIR / dir_name).resolve()
-    if config.PACKAGES_DIR.resolve() not in pkg_dir.parents or not pkg_dir.is_dir():
-        raise HTTPException(404, f"Unknown package '{dir_name}'")
-    try:
-        return assemble(pkg_dir, dir_name)
-    except PackageError as e:
-        raise HTTPException(400, str(e))
+def _source_or_404(source_id_: str) -> dict:
+    src = db.get_package_source(source_id_)
+    if src is None:
+        raise HTTPException(404, f"Unknown package source '{source_id_}'")
+    return src
+
+
+def _packages_view(request: Request, add_error: str | None = None, status: int = 200):
+    # CHEAP per-source structural status only — no full assembly of every package.
+    rows = [catalog_status(s) for s in db.list_package_sources()]
+    return templates.TemplateResponse(request, "packages.html",
+                                      {"rows": rows, "add_error": add_error},
+                                      status_code=status, headers=_NO_STORE)
 
 
 @app.get("/")
 def packages(request: Request):
-    rows = []
-    for dir_name in list_package_dirs():
-        a = _assemble_dir(dir_name)
-        rows.append({
-            "dir_name": dir_name, "name": a.package.name, "version": a.package.version,
-            "fingerprint": a.package.fingerprint, "file_count": len(a.package.files),
-            "task_count": len(load_tasks(config.PACKAGES_DIR / dir_name)),
-            "problem_count": len(a.problems),
-        })
-    return templates.TemplateResponse(request, "packages.html", {"rows": rows})
+    return _packages_view(request)
 
 
-@app.get("/packages/{dir_name}")
-def package_detail(request: Request, dir_name: str):
-    a = _assemble_dir(dir_name)
-    newly_stored = db.save_snapshot(a)
+@app.post("/packages")
+def add_package(request: Request, root_path: str = Form(...)):
+    """Register an operator-supplied package root (trusted-localhost model, NFR-6).
+    Reject only a path that cannot be a package root at all (missing / not a dir);
+    a directory with a bad or missing manifest is still registered and shown
+    unhealthy so the operator can see and fix what broke."""
+    raw = (root_path or "").strip()
+    if not raw:
+        return _packages_view(request, "A package root path is required.", status=400)
+    norm = normalize_root(raw)
+    p = Path(norm)
+    if not p.exists():
+        return _packages_view(request, f"Path does not exist: {norm}", status=400)
+    if not p.is_dir():
+        return _packages_view(request, f"Not a directory: {norm}", status=400)
+    existing = db.get_package_source_by_path(norm)
+    if existing is not None:                       # already registered (any id) → open it
+        return RedirectResponse(url=f"/packages/{existing['id']}", status_code=303)
+    sid = source_id(norm)
+    db.add_package_source(sid, norm)
+    return RedirectResponse(url=f"/packages/{sid}", status_code=303)
+
+
+@app.post("/packages/{source_id_}/remove")
+def remove_package(source_id_: str):
+    db.remove_package_source(source_id_)
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/packages/{source_id_}")
+def package_detail(request: Request, source_id_: str):
+    src = _source_or_404(source_id_)
+    view = load_source(src)
     tasks = []
-    for t in load_tasks(config.PACKAGES_DIR / dir_name):
-        db.save_task(a.package.name, t)
-        t.active = db.get_active(a.package.name, t.id)
-        tasks.append(t)
+    newly_stored = False
+    if view["assembly"] is not None:
+        newly_stored = db.save_snapshot(view["assembly"])
+        for t in view["tasks"]:
+            db.save_task(view["name"], t)
+            t.active = db.get_active(view["name"], t.id)
+            tasks.append(t)
     return templates.TemplateResponse(request, "package_detail.html", {
-        "assembly": a, "package": a.package, "tasks": tasks, "newly_stored": newly_stored,
+        "src": view, "assembly": view["assembly"], "package": view["assembly"].package if view["assembly"] else None,
+        "tasks": tasks, "newly_stored": newly_stored,
         "capabilities": config.CAPABILITIES, "environments": config.ENVIRONMENTS,
         "dev_mock": config.dev_mock_mode(),
-    })
+    }, headers=_NO_STORE)
 
 
-@app.post("/packages/{dir_name}/tasks/{task_id}/toggle")
-def toggle_task(dir_name: str, task_id: str):
-    a = _assemble_dir(dir_name)
-    db.set_active(a.package.name, task_id, not db.get_active(a.package.name, task_id))
-    return RedirectResponse(url=f"/packages/{dir_name}#task-{task_id}", status_code=303)
+@app.post("/packages/{source_id_}/tasks/{task_id}/toggle")
+def toggle_task(source_id_: str, task_id: str):
+    src = _source_or_404(source_id_)
+    view = load_source(src)
+    if view["assembly"] is not None:
+        db.set_active(view["name"], task_id, not db.get_active(view["name"], task_id))
+    return RedirectResponse(url=f"/packages/{source_id_}#task-{task_id}", status_code=303)
 
 
 @app.post("/runs")
 async def start_run(
-    dir_name: str = Form(...),
+    source_id_: str = Form(..., alias="source_id"),
     task: str = Form(...),
     environment: str = Form(...),
     capabilities: list[str] = Form(default=[]),
     forced_outcome: str | None = Form(default=None),
     fault: str | None = Form(default=None),
 ):
-    _assemble_dir(dir_name)  # validates the package exists
+    src = _source_or_404(source_id_)
+    root = Path(src["root_path"])
     # forced_outcome and fault are dev-only; ignored entirely unless dev/mock mode is on.
     dev = config.dev_mock_mode()
     forced = forced_outcome if (dev and forced_outcome not in (None, "", "random")) else None
     fault_val = fault if (dev and fault not in (None, "", "none")) else None
     try:
-        run_id = await orchestrator.start_run(dir_name, task, capabilities, environment, forced, fault_val)
+        run_id = await orchestrator.start_run(root, src["id"], task, capabilities, environment, forced, fault_val)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RedirectResponse(url=f"/runs/{run_id}", status_code=303)

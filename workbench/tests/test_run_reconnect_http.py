@@ -26,6 +26,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -57,7 +59,7 @@ def _start(module: str, port: int, env: dict) -> subprocess.Popen:
 
 def _start_run(wb_port: int) -> str:
     body = urllib.parse.urlencode([
-        ("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+        ("source_id", _regutil.ensure_larkspur(wb_port)), ("task", "LARK-TASK-001"),
         ("environment", "larkspur-sandbox"),
         ("capabilities", "filesystem"), ("capabilities", "shell"),
         ("forced_outcome", "success"),

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Run {{ run.run_id }} · Validation Workbench{% endblock %}
-{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › <a href="/packages/{{ run.request.package.name if run.request else '' }}">{{ run.package_name }}</a> › Run</div>{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › {{ run.package_name }} › Run</div>{% endblock %}
 {% block content %}
   <h1>Validation run <span class="muted">{{ run.run_id }}</span></h1>
   <p class="sub">Task <strong>{{ run.task_id }}</strong> against package <strong>{{ run.package_name }}</strong>.

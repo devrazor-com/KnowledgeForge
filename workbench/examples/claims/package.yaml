@@ -1,0 +1,8 @@
+# Module 1 package manifest — structural configuration only.
+# This package deliberately differs from Larkspur in shape: a non-"index" entry
+# filename, a "validation/" tasks directory (not "tasks/"), nested knowledge
+# folders, and dependency discovery by ordinary relative Markdown links (no
+# front-matter `dependencies`). It must load through the same loader with no
+# package-specific code.
+entry_point: claims-overview.md
+tasks: validation/

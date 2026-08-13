@@ -1,0 +1,9 @@
+{
+  "id": "CLAIM-TASK-002",
+  "title": "Deny claims with no matching coverage at validation",
+  "description": "At the validating stage, deny a claim whose peril has no matching coverage effective on the loss date, before any evidence is gathered, following the pipeline and data model in the knowledge package.",
+  "business_area": "Claims / Intake",
+  "difficulty": "easy",
+  "acceptance_criteria": "A claim whose peril has no coverage effective on its loss_date reaches a decided state with decision denied and reason no_coverage, without entering the gathering_evidence stage.",
+  "metadata": { "author": "Claims platform group" }
+}

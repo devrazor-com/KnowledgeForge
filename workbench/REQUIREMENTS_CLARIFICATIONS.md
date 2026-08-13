@@ -111,6 +111,35 @@ auto-reissues; the operator decides whether to Cancel again. This supersedes the
 earlier ephemeral `cancel_ambiguous` recovery status, which conflated the
 known-non-delivery and genuinely-unknown cases.
 
+## Minimal explicit package format; manifest is structural config, not knowledge (Step 3C-1, settled)
+
+A package is an operator-registered root folder with a `package.yaml` manifest
+declaring only `entry_point` and `tasks:` (optional `name`/`version`). The manifest
+is Module 1 structural configuration: it is **excluded** from
+`KnowledgePackage.files`, **never crosses Module 2**, and **never enters any
+fingerprint**. This replaces the earlier heuristic loader (index-name guessing,
+hardcoded `tasks/`). No Business/Technical/Skills taxonomy exists in Module 1 V1 —
+folder organisation is an authoring convention Module 1 does not interpret. The
+package (knowledge) fingerprint is derived only from the assembled
+`(package-relative path, content)` sequence, so it is independent of the absolute
+registered root and identical across machines/OSes. Package fingerprint, task
+fingerprint, and (3C-3) validation-context fingerprint remain distinct concepts;
+structural loader config is never conflated with knowledge evidence. Full spec:
+`workbench/PACKAGE_FORMAT.md`. Adding a manifest to an existing package does not
+change its fingerprint if the same knowledge files at the same relative paths are
+assembled (verified for Larkspur).
+
+## Operator-supplied local package roots are a trusted-localhost decision (Step 3C-1, settled — NFR-6)
+
+Registering an operator-supplied absolute path (`package_source`) lets the Workbench
+read any directory its local process can reach. For V1 this is an **accepted design
+decision**: the Workbench is a localhost, single-trusted-operator tool in a trusted
+environment, consistent with the existing NFR-6 assumption. Roots are still validated
+(must exist and be a directory) and unreadable/invalid roots fail clearly and remain
+visible as *unhealthy*. This is not to be re-litigated during implementation unless a
+feature would require materially broader access than reading the operator-selected
+package root.
+
 ---
 
 # Open items — UNRESOLVED, for a later step

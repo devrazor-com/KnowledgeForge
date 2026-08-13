@@ -19,6 +19,11 @@ def _write(root: Path, rel: str, text: str) -> None:
     p.write_text(text, encoding="utf-8")
 
 
+def _manifest(root: Path, entry: str = "index.md") -> None:
+    """Minimal package.yaml for an inline temp package (tasks dir need not exist)."""
+    _write(root, "package.yaml", f"entry_point: {entry}\ntasks: tasks/\n")
+
+
 def test_order_is_main_first_then_sorted():
     a = assemble(LARKSPUR, "larkspur")
     assert a.ordered_paths == [
@@ -44,6 +49,7 @@ def test_reading_metadata_from_front_matter():
 
 
 def test_missing_link_is_reported_and_assembly_continues(tmp_path):
+    _manifest(tmp_path)
     _write(tmp_path, "index.md", "# Root\n[missing](gone.md)\n[ok](child.md)\n")
     _write(tmp_path, "child.md", "# Child\n")
     a = assemble(tmp_path, "temp")
@@ -53,6 +59,7 @@ def test_missing_link_is_reported_and_assembly_continues(tmp_path):
 
 
 def test_circular_reference_is_reported(tmp_path):
+    _manifest(tmp_path)
     _write(tmp_path, "index.md", "# A\n[b](b.md)\n")
     _write(tmp_path, "b.md", "# B\n[back](index.md)\n")
     a = assemble(tmp_path, "temp")
@@ -62,6 +69,7 @@ def test_circular_reference_is_reported(tmp_path):
 
 def test_path_outside_root_is_refused(tmp_path):
     pkg = tmp_path / "pkg"
+    _manifest(pkg)
     _write(pkg, "index.md", "# Root\n[escape](../secret.md)\n")
     _write(tmp_path, "secret.md", "# Secret\n")
     a = assemble(pkg, "pkg")

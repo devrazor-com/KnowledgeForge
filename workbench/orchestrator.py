@@ -32,6 +32,7 @@ import asyncio
 import json
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Callable
 
 from workbench import config, contract, db, gateway_client, verdict
@@ -185,13 +186,14 @@ async def _gw_call(fn: Callable, deadline: datetime | None, *args) -> tuple[int,
 # Request assembly and run start
 # --------------------------------------------------------------------------
 
-def build_request(dir_name: str, task: Task, capabilities: list[str],
+def build_request(root: Path, key: str, task: Task, capabilities: list[str],
                   environment: str, run_id: str) -> dict:
     """Assemble the immutable ValidationRequest. The task is emitted with contract
     fields only — the operator-facing `active` flag is excluded (the request schema
     is additionalProperties:false). timeout_seconds is seeded from config; once the
-    request exists, THAT value is authoritative for the deadline."""
-    package = assemble(config.PACKAGES_DIR / dir_name, dir_name).package
+    request exists, THAT value is authoritative for the deadline. The manifest is
+    structural config and is NOT part of package.model_dump()'s files."""
+    package = assemble(root, key).package
     task_obj: dict = {"id": task.id, "title": task.title, "description": task.description,
                       "fingerprint": task.fingerprint}
     if task.business_area is not None:
@@ -215,16 +217,16 @@ def build_request(dir_name: str, task: Task, capabilities: list[str],
     }
 
 
-async def start_run(dir_name: str, task_id: str, capabilities: list[str],
+async def start_run(root: Path, key: str, task_id: str, capabilities: list[str],
                     environment: str, forced_outcome: str | None,
                     fault: str | None = None) -> str:
-    assembly = assemble(config.PACKAGES_DIR / dir_name, dir_name)
-    task = next((t for t in load_tasks(config.PACKAGES_DIR / dir_name) if t.id == task_id), None)
+    assembly = assemble(root, key)
+    task = next((t for t in load_tasks(root / assembly.tasks_rel) if t.id == task_id), None)
     if task is None:
-        raise ValueError(f"Unknown task '{task_id}' in package '{dir_name}'")
+        raise ValueError(f"Unknown task '{task_id}' in package '{key}'")
 
     run_id = _new_run_id()
-    request = build_request(dir_name, task, capabilities, environment, run_id)
+    request = build_request(root, key, task, capabilities, environment, run_id)
     request_validation = contract.validate_request(request)
     db.create_run({
         "run_id": run_id, "package_name": assembly.package.name,

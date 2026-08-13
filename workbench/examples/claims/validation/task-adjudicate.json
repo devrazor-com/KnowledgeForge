@@ -1,0 +1,13 @@
+{
+  "id": "CLAIM-TASK-001",
+  "title": "Apply the deductible before the coverage limit",
+  "description": "Ensure the adjudication engine subtracts the coverage deductible from the assessed loss before capping at the coverage limit, producing approved, partial, or denied decisions consistent with the adjudication rules in the knowledge package.",
+  "business_area": "Claims / Adjudication",
+  "difficulty": "medium",
+  "acceptance_criteria": "For a claim whose assessed loss exceeds the deductible, the approved amount equals clamp(loss - deductible, 0, limit); a loss at or below the deductible is denied with reason below_deductible; and a loss whose net exceeds the limit is a partial paid at the limit with reason limit_reached.",
+  "checks": [
+    { "id": "CLAIM-CHK-SCHEMA", "description": "Claims schema migrations apply cleanly", "command": "make migrate-claims" },
+    { "id": "CLAIM-CHK-TESTS", "description": "Adjudication regression suite passes", "command": "make test-claims" }
+  ],
+  "metadata": { "author": "Claims platform group" }
+}

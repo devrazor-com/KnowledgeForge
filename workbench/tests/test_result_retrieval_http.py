@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -68,7 +70,7 @@ def _env(mock_port, dbpath):
 
 
 def _post_run(wb_port, forced=None, fault=None):
-    fields = [("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+    fields = [("source_id", _regutil.ensure_larkspur(wb_port)), ("task", "LARK-TASK-001"),
               ("environment", "larkspur-sandbox"), ("capabilities", "filesystem")]
     if forced:
         fields.append(("forced_outcome", forced))
@@ -148,9 +150,10 @@ def test_recovery_waits_for_delayed_result(tmp_path):
         os.environ["WORKBENCH_DB"] = str(dbpath)
         from workbench import config, db, orchestrator
         from workbench.tasks import load_tasks
-        task = next(t for t in load_tasks(config.PACKAGES_DIR / "larkspur") if t.id == "LARK-TASK-001")
+        root = config.PACKAGES_DIR / "larkspur"
+        task = next(t for t in load_tasks(root / "tasks") if t.id == "LARK-TASK-001")
         run_id = "run-recovery-delayed"
-        request = orchestrator.build_request("larkspur", task, ["filesystem"], "larkspur-sandbox", run_id)
+        request = orchestrator.build_request(root, "larkspur", task, ["filesystem"], "larkspur-sandbox", run_id)
         _mock_post_start(mock_port, request, fault="delayed_result")
 
         # Wait until the mock has emitted the terminal event.

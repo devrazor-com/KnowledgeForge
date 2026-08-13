@@ -57,6 +57,11 @@ CREATE TABLE IF NOT EXISTS run_event (
     event_json TEXT NOT NULL, m1_validation_json TEXT NOT NULL, received_at TEXT NOT NULL,
     PRIMARY KEY (run_id, sequence)
 );
+CREATE TABLE IF NOT EXISTS package_source (
+    id TEXT PRIMARY KEY,           -- stable, URL-safe slug derived from the root path
+    root_path TEXT NOT NULL UNIQUE, -- machine-local absolute path; NEVER in any fingerprint
+    added_at TEXT NOT NULL
+);
 """
 
 
@@ -115,6 +120,47 @@ def save_task(package_name: str, task: Task) -> None:
             "VALUES (?,?,?,?,?,?,?,?,?)",
             (task.fingerprint, package_name, task.id, task.title, task.description,
              task.business_area, task.difficulty, task.acceptance_criteria, json.dumps(task.checks)))
+
+
+# --------------------------------------------------------------------------
+# Package sources (Step 3C-1) — the operator-registered package roots. Only the
+# machine-local root path is stored here; it never participates in any fingerprint.
+# --------------------------------------------------------------------------
+
+def add_package_source(source_id: str, root_path: str) -> bool:
+    """Register a package root. Idempotent on the resolved path (UNIQUE). Returns
+    True if newly added, False if that path was already registered."""
+    with _connect() as con:
+        cur = con.execute(
+            "INSERT OR IGNORE INTO package_source (id, root_path, added_at) VALUES (?,?,?)",
+            (source_id, root_path, _now_precise()))   # sub-second: stable list ordering
+        return cur.rowcount > 0
+
+
+def list_package_sources() -> list[dict]:
+    with _connect() as con:
+        rows = con.execute("SELECT * FROM package_source ORDER BY added_at, id").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_package_source(source_id: str) -> dict | None:
+    with _connect() as con:
+        row = con.execute("SELECT * FROM package_source WHERE id=?", (source_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def get_package_source_by_path(root_path: str) -> dict | None:
+    with _connect() as con:
+        row = con.execute("SELECT * FROM package_source WHERE root_path=?", (root_path,)).fetchone()
+    return dict(row) if row else None
+
+
+def remove_package_source(source_id: str) -> bool:
+    """Unregister a package source. Returns True if a row was removed. Registered
+    package snapshots/runs are untouched — this only forgets the root registration."""
+    with _connect() as con:
+        cur = con.execute("DELETE FROM package_source WHERE id=?", (source_id,))
+        return cur.rowcount > 0
 
 
 def get_active(package_name: str, task_id: str) -> bool:

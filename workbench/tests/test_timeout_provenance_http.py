@@ -19,6 +19,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import _regutil
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -54,7 +56,7 @@ def _stop(*procs):
 
 
 def _start_run(port, forced=None, fault=None):
-    fields = [("dir_name", "larkspur"), ("task", "LARK-TASK-001"),
+    fields = [("source_id", _regutil.ensure_larkspur(port)), ("task", "LARK-TASK-001"),
               ("environment", "larkspur-sandbox"), ("capabilities", "filesystem")]
     if forced:
         fields.append(("forced_outcome", forced))

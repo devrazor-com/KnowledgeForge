@@ -1,0 +1,10 @@
+[
+  { "event_type": "accepted", "message": "Validation request accepted" },
+  { "event_type": "started", "message": "Preparing environment claims-sandbox" },
+  { "event_type": "progress", "message": "Knowledge package loaded (4 files)" },
+  { "event_type": "tool_call", "message": "Read procedures/adjudication-rules.md" },
+  { "event_type": "tool_call", "message": "Reordered adjudication to apply the deductible before the coverage limit" },
+  { "event_type": "check", "message": "CLAIM-CHK-SCHEMA passed (exit 0)" },
+  { "event_type": "check", "message": "CLAIM-CHK-TESTS passed (exit 0)" },
+  { "event_type": "completed", "message": "Execution finished" }
+]

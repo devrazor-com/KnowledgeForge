@@ -54,6 +54,9 @@ OUTCOME_POOL = {
     # A Gateway-REPORTED timeout: a valid ValidationResult (status failed, diagnosis
     # category 'timeout'). Distinct from Module 1's own deadline breach.
     "gateway_timeout": ("events-gateway-timeout.json", "result-gateway-timeout.json"),
+    # A second-domain success so a multi-package demo doesn't return Larkspur-flavoured
+    # evidence for a claims task. Dev/mock-only; forced_outcome only (never random).
+    "success_claims": ("events-success-claims.json", "result-success-claims.json"),
 }
 # Outcomes eligible for a random pick (the oversized one is opt-in via forced_outcome).
 RANDOM_OUTCOMES = ["success", "check_failure", "knowledge_gap", "technical_failure"]

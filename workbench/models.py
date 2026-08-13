@@ -17,6 +17,17 @@ class Problem(BaseModel):
     detail: str
 
 
+class Manifest(BaseModel):
+    """The minimal package manifest (package.yaml). Structural configuration only:
+    it tells Module 1 where the entry point and task definitions live. It is NOT
+    domain knowledge — it never crosses Module 2 and never enters any fingerprint.
+    `name`/`version` are optional identity metadata (also fingerprint-neutral)."""
+    entry_point: str
+    tasks: str
+    name: str | None = None
+    version: str | None = None
+
+
 class Package(BaseModel):
     name: str
     version: str
@@ -27,11 +38,15 @@ class Package(BaseModel):
 
 
 class Assembly(BaseModel):
-    """Everything the package screen needs: the package plus how it was built."""
+    """Everything the package screen needs: the package plus how it was built.
+    `dir_name` is the stable registry key (source id); `tasks_rel` is the manifest's
+    declared tasks directory (relative to the root)."""
     dir_name: str
     package: Package
     ordered_paths: list[str]
     problems: list[Problem]
+    entry_point: str = ""
+    tasks_rel: str = "tasks/"
 
 
 class Task(BaseModel):

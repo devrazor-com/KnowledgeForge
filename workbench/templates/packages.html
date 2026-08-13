@@ -2,27 +2,53 @@
 {% block title %}Packages · Validation Workbench{% endblock %}
 {% block content %}
   <h1>Knowledge packages</h1>
-  <p class="sub">Each package is a folder of synthetic Markdown. Selecting one assembles it —
-     discovers its documents, orders them deterministically, and fingerprints the result.</p>
+  <p class="sub">Register a package by pointing the Workbench at its root folder. Module 1 reads the
+     package's <code>package.yaml</code> manifest, assembles the Markdown reachable from the declared
+     entry point, loads its tasks, and fingerprints the assembled knowledge.</p>
+
+  <section class="card">
+    <h2>Register a package</h2>
+    {% if add_error %}<div class="notice-bad">{{ add_error }}</div>{% endif %}
+    <form method="post" action="/packages" class="run-grid">
+      <div class="field" style="flex:1 1 420px">
+        <label>Package root (absolute filesystem path)</label>
+        <input type="text" name="root_path" required placeholder="/path/to/your/package"
+               style="width:100%; font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px"/>
+      </div>
+      <div class="field" style="align-self:end">
+        <button type="submit" class="primary">Add package ▶</button>
+      </div>
+    </form>
+    <p class="muted">Trusted-localhost, single-operator model: the Workbench reads the folder you point it at.
+       The absolute path is local registration only — it never affects the package fingerprint.</p>
+  </section>
 
   {% if not rows %}
-    <div class="empty">No packages found under <code>workbench/examples/</code>.</div>
+    <div class="empty">No packages registered yet. Add one above.</div>
   {% else %}
+  <p class="muted">The catalog shows a cheap structural status for each registered source. Full assembly,
+     fingerprinting and detailed diagnostics happen when you open a package.</p>
   <table class="grid">
     <thead>
-      <tr><th>Package</th><th>Version</th><th>Files</th><th>Tasks</th><th>Discovery</th><th>Fingerprint</th></tr>
+      <tr><th>Package</th><th>Version</th><th>Status</th><th></th></tr>
     </thead>
     <tbody>
       {% for r in rows %}
       <tr>
-        <td><a href="/packages/{{ r.dir_name }}"><strong>{{ r.name }}</strong></a>
-            <div class="muted">{{ r.dir_name }}/</div></td>
-        <td>{{ r.version }}</td>
-        <td>{{ r.file_count }}</td>
-        <td>{{ r.task_count }}</td>
-        <td>{% if r.problem_count %}<span class="badge warn">{{ r.problem_count }} problem(s)</span>
-            {% else %}<span class="badge ok">clean</span>{% endif %}</td>
-        <td class="fp">{{ r.fingerprint }}</td>
+        <td><a href="/packages/{{ r.id }}"><strong>{{ r.name }}</strong></a>
+            <div class="muted fp">{{ r.root_path }}</div></td>
+        <td>{{ r.version or "—" }}</td>
+        <td>
+          {% if r.status == 'ok' %}<span class="badge ok">OK</span>
+          {% else %}<span class="badge fail">Unhealthy</span>{% endif %}
+          {% if r.detail %}<div class="muted">{{ r.detail }}</div>{% endif %}
+        </td>
+        <td>
+          <form method="post" action="/packages/{{ r.id }}/remove" class="inline"
+                onsubmit="return confirm('Remove this package from KnowledgeForge? This unregisters the package source. It does not delete the source files or historical validation evidence.');">
+            <button type="submit" class="link-btn">remove</button>
+          </form>
+        </td>
       </tr>
       {% endfor %}
     </tbody>
