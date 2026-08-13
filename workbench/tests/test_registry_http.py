@@ -102,6 +102,9 @@ def _api(wb_port, run_id):
 
 
 def _run(wb_port, source_id, task, environment, forced):
+    # 3C-3: no profile, no run — configure a profile matching this run first (idempotent).
+    _post(wb_port, f"/packages/{source_id}/profile",
+          [("environment", environment), ("capabilities", "filesystem"), ("configured_by", "test")])
     status, loc, _ = _post(wb_port, "/runs", [
         ("source_id", source_id), ("task", task), ("environment", environment),
         ("capabilities", "filesystem"), ("forced_outcome", forced)])

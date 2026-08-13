@@ -200,6 +200,99 @@ contents reachable would require an **additive Module 2 capability** (artifact c
 the result, or a fetch-artifact operation) — a Sadia/Module 3 contract discussion, not a
 hidden Module 1 gap. See the open Gateway-owner item below. `contract/` is NOT changed.
 
+## Extended validation-context staleness — stronger than the literal HST-2/APR-3/APR-4 (Step 3C-3, settled)
+
+**Literal requirements:** HST-2 "A run is stale if its package or task fingerprint no
+longer matches the current one." APR-3 "Approval records who, when, the package
+fingerprint, and the set of task fingerprints." APR-4 "Changing the package or any
+active task invalidates approval."
+
+**Implemented (stronger) interpretation, approved by the operator:** the current
+validation context is **package fingerprint + task fingerprint + canonical permitted
+capability set + target environment** (the profile). A run is stale when its
+execution-time context no longer equals the current context — so a change to the
+package validation profile's **target environment** or **permitted capabilities** also
+makes a run stale and invalidates approval, in addition to package/task fingerprint
+changes. Capability ordering is canonicalised (sorted) and never itself causes
+staleness. The approval record therefore persists **more** than APR-3 literally
+requires (it also stores the profile's environment and capability set), never less.
+This is a deliberate superset of HST-2/APR-3/APR-4, recorded so the final audit
+distinguishes the literal requirement from the stronger implemented model. Package
+fingerprint stays purely knowledge-derived; the validation-context identity is a
+separate concept.
+
+## needs_review resolved-to-passed counts as passing evidence for APR-1 (Step 3C-3, settled)
+
+VER-5 makes a task with no declared checks always yield `needs_review`; VER-6 lets a
+named human resolve a `needs_review` run to `passed`/`failed` with the time recorded;
+VER-7 keeps that resolution alongside the machine verdict, never replacing it. So a
+`needs_review` run resolved to `passed` counts as passing evidence for APR-1's "latest
+passed, non-stale run" (the only path by which a no-check task can be approved). Review
+applies ONLY to `needs_review` runs — it can never make a `failed`/`inconclusive`/
+`cancelled` run approvable. A later validation-context change makes the resolved run
+stale, so it stops counting toward current eligibility (HST-4) while the resolution
+remains a historical fact. (Verified against the full VER/APR text in the final audit.)
+
+## APR-1 candidate-selection rule — current context first (Step 3C-3, settled)
+
+APR-1 "every active task has a latest passed, non-stale run" is ambiguous. Settled rule,
+in two steps:
+
+**1. Restrict to the current-context candidate set.** A run is an approval candidate for
+a task only if its validation context (package fp + task fp + canonical capability set +
+target environment) equals the package's **current** context. Runs under a different
+context — an environment/capability **override**, or a superseded package/task/profile —
+are **outside** the candidate set: they neither qualify nor disqualify current evidence.
+Crucially, a passing override run performed AFTER a valid profile-matching pass does
+**not** revoke that pass (it isn't a candidate at all). This differs from ordinary
+staleness (a package/task/profile change moves the current context itself, so old-context
+evidence legitimately stops qualifying — those runs then read as *re-validation
+required*).
+
+**2. Decide within the candidates, newest-first.** `inconclusive` (VER-3: the package was
+never really tested — neither for nor against) and `cancelled` (abandoned attempt) are
+**skipped**; an **unresolved** `needs_review` **stops the scan and blocks** approval
+(current evidence explicitly awaiting human judgment — not a fallback to an older pass);
+a **resolved** `needs_review` uses the human `passed`/`failed` (VER-6/VER-7); the first
+`passed`/`failed` decides. The task qualifies iff that decisive current run is `passed`.
+
+Concrete results (current context): `passed→failed` = no; `passed→inconclusive` = still
+qualifies from the prior pass; `passed→cancelled` = still qualifies; `passed→unresolved
+needs_review` = blocked (review pending); `passed→resolved-passed` = qualifies;
+`passed→resolved-failed` = no; and a passing env/capability override after a current pass
+= still qualifies (override not a candidate). Checked against VER-3, VER-6, VER-7 and
+APR-1 — no contradiction. Not the loose "any older passing run" reading. Per-task status
+distinguishes **not yet validated** (no runs) from **re-validation required** (runs exist
+but none under the current context) — display semantics derived from stored evidence, no
+new persisted state. Candidate filtering affects approval **eligibility only**; history
+and the evidence view remain complete and mark stale/override runs (HST-3/UI-6).
+
+## Profile-form environment list is intentional; the old run-form global leak was not (Step 3C-3, settled)
+
+The **validation-profile configuration form** deliberately offers **all** globally
+configured target environments: that is where the operator chooses the package's
+**canonical** validation environment, so the full list is correct there. This is
+distinct from the 3C-1 **run-form** environment leak, which was wrong: execution must
+start from the package's configured profile, never silently inherit a global environment
+from another package. Under "no profile, no run", the run form now defaults strictly from
+the profile; selecting a different value is an explicit **run-only override** that does
+not update the profile and does not qualify as current approval evidence. Recorded so a
+future cleanup does not "fix" the profile form by removing legitimate choices, nor
+reintroduce global defaults into execution.
+
+## No validation profile, no validation run (Step 3C-3, settled — supersedes the 3C-3-proposal pre-profile model)
+
+Every validation run executes against an **explicitly configured** package validation
+context. A newly registered package is "profile not configured"; it may be inspected
+but the Run action is blocked until the operator configures the profile (target
+environment + permitted capabilities). Module 1 never manufactures a context from
+global defaults, and there is no fallback execution context — which also removes the
+environment-leakage seen in 3C-1. Pre-profile runs are not supported, so no run's
+approval eligibility is undetermined-at-creation. The disposable dev DB is recreated;
+a historical run recorded before this rule appears honestly in history as evidence
+whose context differs from the current one (immutable), its current qualification
+derived, never hidden or reinterpreted.
+
 ## Current-vs-execution snapshot is factual in 3C-2; formal staleness is 3C-3 (settled)
 
 3C-2 exposes only the fact "this run used fingerprint X; the currently registered

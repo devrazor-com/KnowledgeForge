@@ -53,9 +53,33 @@
     {% endif %}
   </section>
 
+  <!-- Validation profile (3C-3): the package's canonical validation context. -->
+  <section class="card">
+    <h2>Validation profile</h2>
+    {% if profile %}
+      <table class="kv">
+        <tr><td>Target environment</td><td class="fp">{{ profile.target_environment }}</td></tr>
+        <tr><td>Permitted capabilities</td><td>{% for c in profile.capabilities %}<span class="cap-badge">{{ c }}</span> {% endfor %}{% if not profile.capabilities %}<span class="muted">none</span>{% endif %}</td></tr>
+        <tr><td>Configured</td><td class="muted">{{ profile.updated_at[:19]|replace('T',' ') }}{% if profile.configured_by %} · by {{ profile.configured_by }}{% endif %}</td></tr>
+      </table>
+      <details class="panel"><summary>Reconfigure profile</summary>{% include "_profile_form.html" %}</details>
+      <p class="muted">Staleness and approval are judged against this profile. A run may override the
+         environment/capabilities per-run, but an overriding run does not update the profile and does
+         not qualify as current approval evidence.</p>
+    {% else %}
+      <div class="notice-bad">Validation profile not configured. Set the target environment and permitted
+         capabilities before starting any validation run — Module 1 never manufactures a validation
+         context from global defaults.</div>
+      {% include "_profile_form.html" %}
+    {% endif %}
+  </section>
+
   <section class="card run-start">
     <h2>Start a validation run</h2>
-    {% if not tasks %}
+    {% if not profile %}
+      <div class="empty">Runs are unavailable until a validation profile is configured above
+         (no profile, no run).</div>
+    {% elif not tasks %}
       <div class="empty">No tasks in <code>{{ src.tasks_rel }}</code>.</div>
     {% else %}
     <form method="post" action="/runs">
@@ -68,9 +92,9 @@
           </select>
         </div>
         <div class="field">
-          <label>Target environment</label>
+          <label>Target environment <span class="muted">(profile default)</span></label>
           <select name="environment" required>
-            {% for e in environments %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+            {% for e in environments %}<option value="{{ e }}"{% if e == profile.target_environment %} selected{% endif %}>{{ e }}{% if e == profile.target_environment %} — profile default{% endif %}</option>{% endfor %}
           </select>
         </div>
         {% if dev_mock %}
@@ -108,19 +132,52 @@
       </div>
       {% if dev_mock %}<p class="muted">To exercise an unreachable Gateway, stop the mock process and start a run.</p>{% endif %}
       <div class="field">
-        <label>Permitted capabilities</label>
+        <label>Permitted capabilities <span class="muted">(profile default)</span></label>
         <div class="caps">
           {% for c in capabilities %}
           <label class="cap"><input type="checkbox" name="capabilities" value="{{ c }}"
-            {% if c in ['filesystem', 'shell'] %}checked{% endif %}/> {{ c }}</label>
+            {% if c in profile.capabilities %}checked{% endif %}/> {{ c }}</label>
           {% endfor %}
         </div>
       </div>
+      <p class="muted">Environment and capabilities are preselected from the validation profile. Changing them
+         makes this run an <b>override</b> — run-only; it does not update the profile and will not qualify as
+         current approval evidence.</p>
       <button type="submit" class="primary">Start run ▶</button>
       {% if not dev_mock %}<span class="muted" style="margin-left:10px">Forced-outcome control hidden — <code>WORKBENCH_DEV_MOCK</code> is off.</span>{% endif %}
     </form>
     {% endif %}
   </section>
+
+  <!-- Approval (3C-3): explicit operator action; disabled with reason when ineligible (UI-5). -->
+  {% if pstat %}
+  <section class="card">
+    <h2>Approval</h2>
+    {% if pstat.approval and pstat.approval_current %}
+      <div class="kv"><span class="badge pass">Approved · current</span>
+         by <b>{{ pstat.approval.approved_by }}</b> on {{ pstat.approval.approved_at[:19]|replace('T',' ') }}.</div>
+    {% elif pstat.approval %}
+      <div class="kv"><span class="badge warn">Approval recorded · no longer current</span>
+         The package, an active task, or the validation profile changed since approval by
+         <b>{{ pstat.approval.approved_by }}</b> on {{ pstat.approval.approved_at[:19]|replace('T',' ') }}.
+         Re-validate the affected task(s) and approve again.</div>
+    {% else %}
+      <div class="kv"><span class="badge muted-badge">Not approved</span></div>
+    {% endif %}
+    <form method="post" action="/packages/{{ src.id }}/approve" class="run-grid" style="margin-top:8px">
+      <div class="field"><label>Your name (recorded)</label>
+        <input type="text" name="approved_by" placeholder="e.g. victor"
+               style="font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px"/></div>
+      <div class="field" style="align-self:end">
+        <button type="submit" class="primary" {% if not pstat.eligible %}disabled title="{{ pstat.eligibility_reason }}"{% endif %}>Approve package</button>
+      </div>
+    </form>
+    {% if not pstat.eligible %}<p class="muted">Approval is disabled — {{ pstat.eligibility_reason }}</p>{% endif %}
+    <p class="muted">Approval is explicit and records who, when, the package fingerprint, and the active task
+       fingerprints. Changing the package, an active task, or the profile invalidates its current
+       applicability without deleting the record; historical evidence is never rewritten.</p>
+  </section>
+  {% endif %}
 
   {% if assembly.problems %}
   <section class="card problems">
@@ -151,14 +208,14 @@
   </section>
 
   <section class="card">
-    <h2>Tasks <span class="muted">({{ tasks|length }})</span></h2>
-    {% if not tasks %}
+    <h2>Tasks <span class="muted">({{ tasks|length }})</span> — current status</h2>
+    {% if not pstat or not pstat.task_rows %}
       <div class="empty">No tasks in <code>{{ src.tasks_rel }}</code>.</div>
     {% else %}
     <table class="grid">
-      <thead><tr><th>Task</th><th>Checks</th><th>Active</th><th>Fingerprint</th></tr></thead>
+      <thead><tr><th>Task</th><th>Checks</th><th>Active</th><th>Current status</th><th>Fingerprint</th></tr></thead>
       <tbody>
-        {% for t in tasks %}
+        {% for row in pstat.task_rows %}{% set t = row.task %}
         <tr id="task-{{ t.id }}">
           <td><strong>{{ t.id }}</strong> — {{ t.title }}
               <div class="muted">{{ t.business_area or "—" }} · {{ t.difficulty or "—" }}</div></td>
@@ -169,13 +226,25 @@
               <button type="submit" class="link-btn">{% if t.active %}deactivate{% else %}activate{% endif %}</button>
             </form>
           </td>
+          <td>
+            {% if row.status == 'passing_current' %}<span class="badge pass">passing · current</span>
+            {% elif row.status == 'needs_review' %}<span class="badge warn">review pending</span>
+            {% elif row.status == 'failed' %}<span class="badge fail">failed</span>
+            {% elif row.status == 'cancelled' %}<span class="badge muted-badge">cancelled</span>
+            {% elif row.status == 'inconclusive' %}<span class="badge muted-badge">inconclusive</span>
+            {% elif row.status == 'revalidation_required' %}<span class="badge warn">re-validation required</span>
+            {% else %}<span class="badge muted-badge">not yet validated</span>{% endif %}
+            {% if row.run_id %} <a href="/runs/{{ row.run_id }}" class="muted">latest current ↗</a>{% endif %}
+            {% if row.outcome_source == 'review' %}<div class="muted">human-resolved</div>{% endif %}
+          </td>
           <td class="fp">{{ t.fingerprint }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
-    <p class="muted">Only active tasks will count toward approval (later step). Toggling active
-       state does not change a task's fingerprint.</p>
+    <p class="muted">Only <b>active</b> tasks count toward approval. “current” vs “stale” compares each latest
+       run's validation context (package + task + capabilities + environment) to the current profile;
+       toggling active state does not change a task's fingerprint.</p>
     {% endif %}
   </section>
   {% endif %}

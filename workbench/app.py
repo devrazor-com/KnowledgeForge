@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from workbench import config, db, orchestrator
+from workbench import status as vstatus
 from workbench.packages import (
     PackageError, catalog_status, load_source, normalize_root, read_manifest, source_id,
 )
@@ -50,8 +51,24 @@ def _source_or_404(source_id_: str) -> dict:
 
 
 def _packages_view(request: Request, add_error: str | None = None, status: int = 200):
-    # CHEAP per-source structural status only — no full assembly of every package.
-    rows = [catalog_status(s) for s in db.list_package_sources()]
+    # CHEAP per-source status only (M2) — structural health + durable-state flags; NO
+    # full assembly/fingerprint of every package. Authoritative current/stale/eligible
+    # status is computed on package detail, where assembly is warranted.
+    rows = []
+    for s in db.list_package_sources():
+        r = catalog_status(s)
+        pid = s.get("package_id")
+        r["profile_configured"] = pid is not None and db.get_validation_profile(pid) is not None
+        r["approval_recorded"] = pid is not None and db.latest_approval(pid) is not None
+        if r["status"] != "ok":
+            r["board"] = "unhealthy"
+        elif not r["profile_configured"]:
+            r["board"] = "needs_profile"
+        elif r["approval_recorded"]:
+            r["board"] = "approval_recorded"   # narrow: currency is confirmed on detail
+        else:
+            r["board"] = "no_approval"
+        rows.append(r)
     return templates.TemplateResponse(request, "packages.html",
                                       {"rows": rows, "add_error": add_error},
                                       status_code=status, headers=_NO_STORE)
@@ -106,24 +123,78 @@ def remove_package(source_id_: str):
     return RedirectResponse(url="/", status_code=303)
 
 
-@app.get("/packages/{source_id_}")
-def package_detail(request: Request, source_id_: str):
+def _package_context(source_id_: str):
+    """Assemble a healthy package, overlay task active-state, and compute current status.
+    Returns (src_view, profile, tasks, pstat) — pstat/tasks empty if unhealthy."""
     src = _source_or_404(source_id_)
     view = load_source(src)
-    tasks = []
-    newly_stored = False
+    package_id = src.get("package_id")
+    profile = db.get_validation_profile(package_id)
+    tasks, pstat, newly_stored = [], None, False
     if view["assembly"] is not None:
         newly_stored = db.save_snapshot(view["assembly"])
         for t in view["tasks"]:
             db.save_task(view["name"], t)
             t.active = db.get_active(view["name"], t.id)
             tasks.append(t)
+        pstat = vstatus.package_status(package_id, view["fingerprint"], tasks, profile)
+    return src, view, profile, tasks, pstat, newly_stored
+
+
+@app.get("/packages/{source_id_}")
+def package_detail(request: Request, source_id_: str):
+    _src, view, profile, tasks, pstat, newly_stored = _package_context(source_id_)
     return templates.TemplateResponse(request, "package_detail.html", {
         "src": view, "assembly": view["assembly"], "package": view["assembly"].package if view["assembly"] else None,
-        "tasks": tasks, "newly_stored": newly_stored,
+        "tasks": tasks, "newly_stored": newly_stored, "profile": profile, "pstat": pstat,
         "capabilities": config.CAPABILITIES, "environments": config.ENVIRONMENTS,
         "dev_mock": config.dev_mock_mode(),
     }, headers=_NO_STORE)
+
+
+@app.post("/packages/{source_id_}/profile")
+def configure_profile(source_id_: str, environment: str = Form(...),
+                      capabilities: list[str] = Form(default=[]), configured_by: str = Form(default="")):
+    src = _source_or_404(source_id_)
+    package_id = src.get("package_id")
+    if not package_id:
+        raise HTTPException(400, "This source has no valid package identity; fix the package first.")
+    if environment not in config.ENVIRONMENTS:
+        raise HTTPException(400, f"Unknown target environment '{environment}'.")
+    caps = [c for c in capabilities if c in config.CAPABILITIES]
+    db.set_validation_profile(package_id, environment, caps, (configured_by or "").strip() or None)
+    return RedirectResponse(url=f"/packages/{source_id_}", status_code=303)
+
+
+@app.post("/packages/{source_id_}/approve")
+def approve_package(source_id_: str, approved_by: str = Form(...)):
+    src, view, profile, tasks, pstat, _ = _package_context(source_id_)
+    if pstat is None:
+        raise HTTPException(400, "Cannot approve an unhealthy package.")
+    if not (approved_by or "").strip():
+        raise HTTPException(400, "An approver name is required.")
+    if not pstat["eligible"]:                       # APR-2: server re-checks; never auto-approves
+        raise HTTPException(400, f"Not approval-eligible: {pstat['eligibility_reason']}")
+    db.add_approval(src["package_id"], approved_by.strip(), view["fingerprint"],
+                    pstat["active_task_fingerprints"], profile["target_environment"],
+                    profile["capabilities"], pstat["qualifying_runs"])
+    return RedirectResponse(url=f"/packages/{source_id_}", status_code=303)
+
+
+@app.post("/runs/{run_id}/review")
+def resolve_review(run_id: str, resolution: str = Form(...), resolved_by: str = Form(...)):
+    view = orchestrator.run_view(run_id)
+    if view is None:
+        raise HTTPException(404, f"Unknown run '{run_id}'")
+    if resolution not in ("passed", "failed"):
+        raise HTTPException(400, "Resolution must be 'passed' or 'failed'.")
+    if not (resolved_by or "").strip():
+        raise HTTPException(400, "A resolver name is required.")
+    v = view.get("verdict")
+    if not (v and v.get("outcome") == "needs_review"):
+        raise HTTPException(400, "Only a needs_review run can be resolved by a human.")
+    db.set_review_resolution(run_id, resolved_by.strip(), resolution)
+    return RedirectResponse(url=f"/runs/{run_id}", status_code=303)
 
 
 @app.post("/packages/{source_id_}/tasks/{task_id}/toggle")
@@ -167,13 +238,23 @@ def package_history(request: Request, source_id_: str):
     view = load_source(src)
     package_id = src.get("package_id")
     current_fp = view.get("fingerprint")
+    profile = db.get_validation_profile(package_id)
     runs = db.runs_for_package(package_id) if package_id else []
     for r in runs:
         r["capabilities"] = json.loads(r["capabilities_json"]) if r.get("capabilities_json") else []
         r["verdict"] = json.loads(r["verdict_json"]) if r.get("verdict_json") else None
-        r["snapshot_is_current"] = current_fp is not None and r["package_fingerprint"] == current_fp
+        # Context-based currency (matches eligibility + the evidence view): a run is
+        # current only if its full validation context equals the current one — so an
+        # env/capability override under the same fingerprint reads as stale here too.
+        if profile and current_fp:
+            cur_ctx = vstatus.validation_context_id(
+                current_fp, r["task_fingerprint"], profile["capabilities"], profile["target_environment"])
+            r["context_current"] = vstatus.run_context_id(r) == cur_ctx
+        else:
+            r["context_current"] = None
     return templates.TemplateResponse(request, "history.html",
-                                      {"src": view, "runs": runs, "current_fingerprint": current_fp},
+                                      {"src": view, "runs": runs, "current_fingerprint": current_fp,
+                                       "profile_configured": profile is not None},
                                       headers=_NO_STORE)
 
 
@@ -218,6 +299,15 @@ def run_panel(request: Request, run_id: str):
     if view is None or not view.get("result"):
         raise HTTPException(404, "no result for this run")
     return templates.TemplateResponse(request, "_result.html", {"run": view})
+
+
+@app.get("/help")
+def help_page(request: Request):
+    from workbench import vocab
+    return templates.TemplateResponse(request, "help.html", {
+        "outcomes": vocab.OUTCOMES, "error_kinds": vocab.ERROR_KINDS,
+        "cancel_states": vocab.CANCEL_DELIVERY_STATES,
+    })
 
 
 @app.get("/api/runs/{run_id}")

@@ -66,6 +66,40 @@ CREATE TABLE IF NOT EXISTS package_source (
                                    -- an unhealthy source with no resolvable id)
     added_at TEXT NOT NULL
 );
+-- 3C-3: current MUTABLE operator configuration — the package's canonical validation
+-- context (target environment + permitted capabilities). Keyed by durable package_id.
+-- No profile => no run (enforced in the orchestrator). Excluded from all fingerprints.
+CREATE TABLE IF NOT EXISTS validation_profile (
+    package_id TEXT PRIMARY KEY,
+    target_environment TEXT NOT NULL,
+    capabilities_json TEXT NOT NULL,   -- canonical (sorted) permitted capability set
+    configured_by TEXT,
+    configured_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+-- 3C-3: immutable human review resolution for a needs_review run (VER-6/VER-7).
+-- Stored ALONGSIDE the machine verdict, never replacing it.
+CREATE TABLE IF NOT EXISTS review_resolution (
+    run_id TEXT PRIMARY KEY,
+    resolved_by TEXT NOT NULL,
+    resolution TEXT NOT NULL,           -- 'passed' | 'failed'
+    resolved_at TEXT NOT NULL
+);
+-- 3C-3: immutable approval decision (APR-2/APR-3). Records who/when, the package
+-- fingerprint, the set of active task fingerprints, and the profile context it was
+-- granted against. Invalidation (APR-4) is DERIVED by comparing to current state,
+-- never by mutating/erasing this row. The latest row for a package_id is current.
+CREATE TABLE IF NOT EXISTS approval (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    package_id TEXT NOT NULL,
+    approved_by TEXT NOT NULL,
+    approved_at TEXT NOT NULL,
+    package_fingerprint TEXT NOT NULL,
+    task_fingerprints_json TEXT NOT NULL,
+    target_environment TEXT NOT NULL,
+    capabilities_json TEXT NOT NULL,
+    qualifying_runs_json TEXT NOT NULL
+);
 """
 
 
@@ -175,6 +209,94 @@ def remove_package_source(source_id: str) -> bool:
     with _connect() as con:
         cur = con.execute("DELETE FROM package_source WHERE id=?", (source_id,))
         return cur.rowcount > 0
+
+
+# --------------------------------------------------------------------------
+# Validation profile / review / approval (Step 3C-3)
+# --------------------------------------------------------------------------
+
+def set_validation_profile(package_id: str, target_environment: str,
+                           capabilities: list[str], configured_by: str | None) -> None:
+    """Create or update a package's validation profile (mutable operator config).
+    Capabilities are stored canonicalised (sorted, de-duplicated)."""
+    caps = json.dumps(sorted(set(capabilities)))
+    now = _now()
+    with _connect() as con:
+        con.execute(
+            "INSERT INTO validation_profile (package_id, target_environment, capabilities_json, "
+            "configured_by, configured_at, updated_at) VALUES (?,?,?,?,?,?) "
+            "ON CONFLICT(package_id) DO UPDATE SET target_environment=excluded.target_environment, "
+            "capabilities_json=excluded.capabilities_json, configured_by=excluded.configured_by, "
+            "updated_at=excluded.updated_at",
+            (package_id, target_environment, caps, configured_by, now, now))
+
+
+def get_validation_profile(package_id: str | None) -> dict | None:
+    if not package_id:
+        return None
+    with _connect() as con:
+        row = con.execute("SELECT * FROM validation_profile WHERE package_id=?", (package_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["capabilities"] = json.loads(d["capabilities_json"])
+    return d
+
+
+def set_review_resolution(run_id: str, resolved_by: str, resolution: str) -> None:
+    """Record (or replace) a human resolution of a needs_review run. Stored alongside
+    the machine verdict; the mechanical verdict is never overwritten."""
+    with _connect() as con:
+        con.execute(
+            "INSERT INTO review_resolution (run_id, resolved_by, resolution, resolved_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(run_id) DO UPDATE SET resolved_by=excluded.resolved_by, "
+            "resolution=excluded.resolution, resolved_at=excluded.resolved_at",
+            (run_id, resolved_by, resolution, _now()))
+
+
+def get_review_resolution(run_id: str) -> dict | None:
+    with _connect() as con:
+        row = con.execute("SELECT * FROM review_resolution WHERE run_id=?", (run_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def reviews_for_runs(run_ids: list[str]) -> dict[str, dict]:
+    if not run_ids:
+        return {}
+    with _connect() as con:
+        rows = con.execute(
+            f"SELECT * FROM review_resolution WHERE run_id IN ({','.join('?' * len(run_ids))})",
+            run_ids).fetchall()
+    return {r["run_id"]: dict(r) for r in rows}
+
+
+def add_approval(package_id: str, approved_by: str, package_fingerprint: str,
+                 task_fingerprints: list[str], target_environment: str,
+                 capabilities: list[str], qualifying_runs: list[str]) -> None:
+    """Append an immutable approval decision (APR-2/APR-3). Never updates a prior row."""
+    with _connect() as con:
+        con.execute(
+            "INSERT INTO approval (package_id, approved_by, approved_at, package_fingerprint, "
+            "task_fingerprints_json, target_environment, capabilities_json, qualifying_runs_json) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (package_id, approved_by, _now(), package_fingerprint,
+             json.dumps(sorted(task_fingerprints)), target_environment,
+             json.dumps(sorted(set(capabilities))), json.dumps(qualifying_runs)))
+
+
+def latest_approval(package_id: str | None) -> dict | None:
+    if not package_id:
+        return None
+    with _connect() as con:
+        row = con.execute(
+            "SELECT * FROM approval WHERE package_id=? ORDER BY id DESC LIMIT 1", (package_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["task_fingerprints"] = json.loads(d["task_fingerprints_json"])
+    d["capabilities"] = json.loads(d["capabilities_json"])
+    d["qualifying_runs"] = json.loads(d["qualifying_runs_json"])
+    return d
 
 
 def get_active(package_name: str, task_id: str) -> bool:

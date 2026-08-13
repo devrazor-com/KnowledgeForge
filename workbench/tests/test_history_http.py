@@ -104,6 +104,10 @@ def _api(wb_port, run_id):
 
 
 def _run(wb_port, sid, task="LARK-TASK-001", env="larkspur-sandbox", forced="success", fault=None):
+    # 3C-3: no profile, no run — configure a stable profile first (idempotent). A NULL-id
+    # source rejects this (400, ignored) and the run itself is then refused too.
+    _post(wb_port, f"/packages/{sid}/profile",
+          [("environment", env), ("capabilities", "filesystem"), ("configured_by", "test")])
     fields = [("source_id", sid), ("task", task), ("environment", env),
               ("capabilities", "filesystem"), ("forced_outcome", forced)]
     if fault:

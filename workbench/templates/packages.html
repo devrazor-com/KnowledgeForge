@@ -39,9 +39,12 @@
             <div class="muted fp">{{ r.root_path }}</div></td>
         <td>{{ r.version or "—" }}</td>
         <td>
-          {% if r.status == 'ok' %}<span class="badge ok">OK</span>
-          {% else %}<span class="badge fail">Unhealthy</span>{% endif %}
-          {% if r.detail %}<div class="muted">{{ r.detail }}</div>{% endif %}
+          {% if r.board == 'unhealthy' %}<span class="badge fail">Unhealthy</span>
+             {% if r.detail %}<div class="muted">{{ r.detail }}</div>{% endif %}
+          {% elif r.board == 'needs_profile' %}<span class="badge warn">Needs profile</span>
+          {% elif r.board == 'approval_recorded' %}<span class="badge ok">Approval recorded</span>
+             <div class="muted">open to confirm currency</div>
+          {% else %}<span class="badge muted-badge">No approval</span>{% endif %}
         </td>
         <td>
           <form method="post" action="/packages/{{ r.id }}/remove" class="inline"

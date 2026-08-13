@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Help · Validation Workbench{% endblock %}
+{% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › Help</div>{% endblock %}
+{% block content %}
+  <h1>Validation Workbench — Help</h1>
+  <p class="sub">For a developer or solution architect using KnowledgeForge Module 1 for the first time.</p>
+
+  <section class="card">
+    <h2>What Module 1 is for</h2>
+    <p class="prose">KnowledgeForge validates whether a business-domain <b>knowledge package</b> is good enough
+       that an engineering agent, given only that package, can carry out real tasks correctly. Module 1 —
+       this Validation Workbench — is the operator's cockpit: it assembles a package, sends validation
+       requests across the Module 2 contract to an execution Gateway (Module 3), records the evidence that
+       comes back, derives a verdict, and lets you review and approve.</p>
+    <p class="prose"><b>What a run proves:</b> that, for one task against one exact snapshot of the package's
+       knowledge, the declared checks ran and passed (or didn't), as reported by the Gateway and judged by
+       Module 1's own rules. <b>What it does not prove:</b> that the package is correct in general, that
+       untested tasks would pass, or anything about knowledge the task didn't exercise. Module 1 never
+       invents a result and derives the verdict itself — the Gateway never supplies one.</p>
+  </section>
+
+  <section class="card">
+    <h2>The operator flow</h2>
+    <p class="prose"><b>register package → configure validation profile → run a task → inspect evidence →
+       resolve review if required → approve.</b></p>
+    <ul class="rlist">
+      <li><b>Register</b> a package by pointing the Workbench at its root folder (it needs a
+          <code>package.yaml</code> with a durable <code>package_id</code>, an entry point, and a tasks
+          directory — see <code>workbench/PACKAGE_FORMAT.md</code>).</li>
+      <li><b>Configure the validation profile</b> (target environment + permitted capabilities). Until then
+          the package is <b>“profile not configured”</b> and <b>runs are blocked</b> — Module 1 never
+          manufactures a validation context from global defaults.</li>
+      <li><b>Run</b> a task; the Run screen defaults to the profile. Overriding environment/capabilities is
+          run-only and does not update the profile or qualify as current approval evidence.</li>
+      <li><b>Inspect evidence</b> in the run screen and the package's validation history.</li>
+      <li><b>Resolve review</b> for a <code>needs_review</code> run (a named human records passed/failed).</li>
+      <li><b>Approve</b> when every active task has a latest passing, current run.</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>Package health, profiles, identity</h2>
+    <p class="prose"><b>Package health:</b> the catalog shows a cheap structural status (root/manifest/entry
+       resolvable); the package detail page assembles fully and reports discovery problems. An unhealthy
+       package stays visible with the reason.</p>
+    <p class="prose"><b>Durable identity:</b> <code>package_id</code> is the logical package (stable across
+       content, name, and root changes); <code>package_fingerprint</code> is the exact knowledge bytes a run
+       used; the registered source/root is just where the current copy lives. History and approval hang off
+       <code>package_id</code>, never the mutable source.</p>
+    <p class="prose"><b>Validation profile:</b> the package's canonical validation context — its target
+       environment and permitted capability set — stored as operator configuration. It is deployment policy,
+       not package knowledge, so it lives in Module 1's database and is excluded from every fingerprint.</p>
+  </section>
+
+  <section class="card">
+    <h2>Staleness and the validation context</h2>
+    <p class="prose">A run's <b>validation context</b> is <b>package fingerprint + task fingerprint +
+       canonical permitted capability set + target environment</b>. A run is <b>stale</b> when its
+       execution-time context no longer equals the current one — i.e. the package knowledge changed, the task
+       changed, or the profile's environment or capabilities changed. Capability ordering is canonicalised and
+       never itself causes staleness. Staleness is a <b>current comparison</b>: a historical run is never
+       rewritten and was not “stale at the time”; only its current qualification changes. Stale results are
+       shown distinctly and do not count toward approval.</p>
+  </section>
+
+  <section class="card">
+    <h2>Outcomes and the six verdict rules</h2>
+    <p class="prose">Module 1 derives the outcome from the Gateway's result using six ordered rules
+       (first match wins). The <b>order matters</b>: a check that <em>ran and failed</em> (rule 4) is real
+       evidence and must beat “some check didn't run” (rule 5); a technical failure (rule 2) must be caught
+       before checks are considered; a cancellation (rule 1) wins over everything.</p>
+    <ol class="rlist">
+      <li><b>Rule 1 — cancelled:</b> result status <code>cancelled</code> → <code>cancelled</code>.</li>
+      <li><b>Rule 2 — technical failure:</b> result status <code>failed</code> → <code>inconclusive</code>.</li>
+      <li><b>Rule 3 — no checks declared:</b> → <code>needs_review</code>.</li>
+      <li><b>Rule 4 — a declared check ran and failed:</b> → <code>failed</code>.</li>
+      <li><b>Rule 5 — a declared check did not run:</b> → <code>needs_review</code>.</li>
+      <li><b>Rule 6 — all declared checks ran and passed:</b> → <code>passed</code>.</li>
+    </ol>
+    <h3>Outcome values</h3>
+    <table class="kv">
+      {% for name, desc in outcomes.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
+    </table>
+    <p class="prose"><b>Two provenances of <code>inconclusive</code>:</b> (1) Module 3 itself reported a
+       technical failure — a valid ValidationResult with status <code>failed</code> (rule 2); or (2) Module 1
+       could not obtain or validate a usable result at all — the run ends in a Module-1 error state (below)
+       with an <em>effective</em> outcome of inconclusive. Both count neither for nor against the package, and
+       are shown distinctly.</p>
+  </section>
+
+  <section class="card">
+    <h2>needs_review, review, and approval</h2>
+    <p class="prose"><b>needs_review</b> arises when Module 1 has no decisive machine evidence — a task with no
+       declared checks (rule 3), or a declared check that did not run (rule 5). A <b>named human</b> resolves
+       it to <code>passed</code> or <code>failed</code>, with the time recorded. The human resolution is
+       stored <em>alongside</em> the machine verdict, never replacing it, and stays distinguishable from it. A
+       run resolved to <code>passed</code> can then count as passing evidence for approval; review can never
+       make a <code>failed</code>, <code>inconclusive</code>, or <code>cancelled</code> run approvable. If the
+       validation context later changes, a resolved run becomes stale and stops counting toward current
+       eligibility, while the resolution remains a historical fact.</p>
+    <p class="prose"><b>How approval evidence is selected — current context first.</b> Only runs whose
+       validation context matches the package's <b>current</b> one (current package fingerprint + task
+       fingerprint + capability set + target environment) are approval candidates. Runs under a different
+       context — an environment/capability <b>override</b>, or a superseded package/task/profile — stay
+       fully visible in history and evidence but are <b>not</b> candidates: they neither qualify nor
+       disqualify current evidence. So an experiment run with an override, performed after a valid
+       profile-matching pass, does not revoke that pass.</p>
+    <p class="prose">Among the current-context runs, newest first: <code>inconclusive</code> (a technical
+       failure — the package was never really tested) and <code>cancelled</code> (an abandoned attempt) are
+       <b>skipped</b> (neither qualify nor disqualify), so a transient Gateway outage after a successful
+       validation does not erase an earlier pass. An <b>unresolved</b> <code>needs_review</code>
+       <b>blocks</b> approval (review pending) until a human records the outcome. A resolved
+       <code>needs_review</code> uses the human passed/failed. The first <code>passed</code>/<code>failed</code>
+       is decisive — the task qualifies only if that decisive current run is <code>passed</code>. If a task
+       has no run under the current context, it reads as <b>not yet validated</b> (never run) or
+       <b>re-validation required</b> (validated before, but the context changed).</p>
+    <p class="prose"><b>Approval</b> is an explicit operator action (the system never approves automatically).
+       A package is approval-eligible when every <b>active</b> task's current-context evidence is a decisive
+       pass. Approval records who, when, the package fingerprint, and the active task
+       fingerprints (plus the profile context). Changing the package, an active task, or the profile
+       <b>invalidates the approval's current applicability</b> — the historical approval record is never
+       deleted; its current validity is derived. The Module 3 outcome, Module 1's verdict, the review state,
+       and the approval state are four separate things and are shown as such.</p>
+  </section>
+
+  <section class="card">
+    <h2>Error kinds</h2>
+    <p class="prose">When no valid ValidationResult is obtained, the run reaches a terminal Module-1 error
+       state (effective outcome <code>inconclusive</code>) with a Module-1-authored error kind:</p>
+    <table class="kv">
+      {% for name, desc in error_kinds.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Cancellation-delivery states</h2>
+    <p class="prose">Operator cancellation intent is separate from what Module 1 knows about <b>delivering</b>
+       that request to the Gateway:</p>
+    <table class="kv">
+      {% for name, desc in cancel_states.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
+    </table>
+    <p class="prose"><b><code>acknowledged</code> does not mean the run is cancelled</b> — it means Module 3
+       acknowledged receiving the cancellation request. The run is only cancelled when the contract
+       <code>cancelled</code> event/result arrives and verdict rule #1 applies.</p>
+  </section>
+
+  <section class="card">
+    <h2>Evidence and artifacts</h2>
+    <p class="prose">Every run preserves the ExecutionEvents, the ValidationResult (summary, check results and
+       their output, diagnosis), and the derived verdict, all reachable from the run screen and history.
+       <b>Artifact names</b> reported by Module 3 (e.g. <code>diff.patch</code>, <code>test.log</code>,
+       <code>transcript.log</code>) are shown as <b>references only</b> — the frozen Module 2 contract does not
+       carry artifact file <em>contents</em>, so Module 1 does not hold them.</p>
+    <p class="prose">Diagnosis is presented separately from raw evidence and clearly marked as an
+       interpretation; it never determines the outcome by itself.</p>
+    <p class="prose muted">See also <code>workbench/PACKAGE_FORMAT.md</code> (package format) and
+       <code>workbench/REQUIREMENTS_CLARIFICATIONS.md</code> (settled interpretations and open Gateway-owner
+       questions).</p>
+  </section>
+{% endblock %}

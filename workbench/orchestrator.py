@@ -35,7 +35,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from workbench import config, contract, db, gateway_client, verdict
+from workbench import config, contract, db, gateway_client, status, verdict
 from workbench.config import mod3_base_url
 from workbench.models import Task
 from workbench.packages import assemble
@@ -234,6 +234,12 @@ async def start_run(root: Path, key: str, registered_package_id: str | None, tas
             f"'{registered_package_id}' but its manifest now declares "
             f"'{assembly.package_id}'. No run was started. Changing package_id is an "
             f"identity change — unregister and re-register this package deliberately.")
+    # No profile, no run: every validation run executes against an explicitly configured
+    # validation context. Module 1 never manufactures one from global defaults.
+    if db.get_validation_profile(registered_package_id) is None:
+        raise ValueError(
+            "This package has no validation profile configured. Configure its target "
+            "environment and permitted capabilities before starting a validation run.")
     task = next((t for t in load_tasks(root / assembly.tasks_rel) if t.id == task_id), None)
     if task is None:
         raise ValueError(f"Unknown task '{task_id}' in package '{key}'")
@@ -668,5 +674,17 @@ def run_view(run_id: str) -> dict | None:
     view["current_source_registered"] = cur_fp is not None
     view["current_source_id"] = cur_src_id
     view["snapshot_is_current"] = cur_fp is not None and cur_fp == run.get("package_fingerprint")
+    # 3C-3 current interpretation over the immutable evidence: review-aware effective
+    # outcome and context-based staleness (package + task + capabilities + environment).
+    profile = db.get_validation_profile(run.get("package_id"))
+    review = db.get_review_resolution(run_id)
+    st = status.run_current_status(run, cur_fp, profile, review)
+    view["profile_configured"] = profile is not None
+    view["review"] = review
+    view["effective_outcome"] = st["effective_outcome"]
+    view["outcome_source"] = st["outcome_source"]
+    view["context_comparable"] = st["context_comparable"]
+    view["context_is_current"] = st["is_current"]
+    view["context_is_stale"] = st["is_stale"]
     view["events"] = db.get_events(run_id, 0)
     return view

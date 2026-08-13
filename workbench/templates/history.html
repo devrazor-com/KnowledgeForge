@@ -37,14 +37,17 @@
         <td>{{ r.target_environment }}
             <div class="muted">{% for c in r.capabilities %}{{ c }}{% if not loop.last %}, {% endif %}{% endfor %}</div></td>
         <td class="fp">{{ r.package_fingerprint[:21] }}…
-            {% if r.snapshot_is_current %}<span class="badge ok">current</span>
-            {% elif current_fingerprint %}<span class="badge warn">older snapshot</span>{% endif %}</td>
+            {% if r.context_current %}<span class="badge ok">current</span>
+            {% elif r.context_current is not none %}<span class="badge warn">stale</span>{% endif %}</td>
         <td class="muted">{{ r.created_at[:19]|replace('T',' ') }}</td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="muted">“current” / “older snapshot” is a factual fingerprint comparison, not a staleness or
-     approval judgment — those arrive in a later step.</p>
+  <p class="muted">“current” / “stale” compares each run's full validation context (package + task +
+     capabilities + environment) to the package's current validation profile. Stale runs — including
+     runs made with an environment/capability override — remain visible here but do not count toward
+     approval.{% if not profile_configured %} (No validation profile is configured, so currency cannot be
+     computed yet.){% endif %}</p>
   {% endif %}
 {% endblock %}

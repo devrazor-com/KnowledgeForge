@@ -36,9 +36,27 @@ def register(wb_port: int, root_path: str) -> str:
     return loc.rsplit("/", 1)[-1]
 
 
+def configure_profile(wb_port: int, source_id: str, environment: str, capabilities, by: str = "test") -> None:
+    """Configure a package's validation profile via the real endpoint (3C-3: no
+    profile, no run). Idempotent."""
+    fields = [("environment", environment), ("configured_by", by)] + [("capabilities", c) for c in capabilities]
+    try:
+        with urllib.request.build_opener(_NoRedirect).open(urllib.request.Request(
+                f"http://127.0.0.1:{wb_port}/packages/{source_id}/profile",
+                data=urllib.parse.urlencode(fields).encode(), method="POST")):
+            pass
+    except urllib.error.HTTPError:
+        pass
+
+
 def ensure_larkspur(wb_port: int) -> str:
-    return register(wb_port, LARKSPUR_ROOT)
+    """Register Larkspur AND configure a default profile so runs can start."""
+    sid = register(wb_port, LARKSPUR_ROOT)
+    configure_profile(wb_port, sid, "larkspur-sandbox", ["filesystem"])
+    return sid
 
 
 def ensure_claims(wb_port: int) -> str:
-    return register(wb_port, CLAIMS_ROOT)
+    sid = register(wb_port, CLAIMS_ROOT)
+    configure_profile(wb_port, sid, "claims-sandbox", ["filesystem"])
+    return sid

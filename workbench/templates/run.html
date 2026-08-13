@@ -38,16 +38,19 @@
     <div class="kv">Package id: <span class="fp">{{ run.package_id or "—" }}</span> <span class="muted">durable logical identity</span></div>
     <div class="kv">Package fingerprint <span class="muted">(execution-time snapshot)</span>: <span class="fp">{{ run.package_fingerprint }}</span></div>
     <div class="kv">Task fingerprint: <span class="fp">{{ run.task_fingerprint }}</span></div>
-    {% if run.current_source_registered %}
-      {% if run.snapshot_is_current %}
-        <div class="kv"><span class="badge ok">current snapshot</span> This run used the package content currently registered under <code>{{ run.package_id }}</code>.</div>
+    {% if run.context_comparable %}
+      {% if run.context_is_current %}
+        <div class="kv"><span class="badge ok">current</span> This run's validation context (package + task + capabilities + environment) matches the package's current profile.</div>
       {% else %}
-        <div class="kv"><span class="badge warn">snapshot differs from current</span>
-           The package now registered under <code>{{ run.package_id }}</code> assembles to
-           <span class="fp">{{ run.current_package_fingerprint }}</span>. Factual only — staleness and approval arrive in a later step.</div>
+        <div class="kv"><span class="badge warn">stale</span> This run's validation context no longer matches the current one — the package knowledge, task, or validation profile changed since it ran. The evidence below is unchanged; only its <em>current</em> qualification differs.</div>
       {% endif %}
+    {% elif run.current_source_registered %}
+      <div class="kv muted">No validation profile is configured for <code>{{ run.package_id }}</code>, so there is no current validation context to compare against.</div>
     {% else %}
-      <div class="kv muted">No package is currently registered under <code>{{ run.package_id or "—" }}</code>, so there is no current fingerprint to compare against.</div>
+      <div class="kv muted">No package is currently registered under <code>{{ run.package_id or "—" }}</code>, so there is no current context to compare against.</div>
+    {% endif %}
+    {% if run.current_source_registered and not run.snapshot_is_current %}
+      <div class="kv muted">Execution-time snapshot <span class="fp">{{ run.package_fingerprint[:23] }}…</span> · current package assembles to <span class="fp">{{ run.current_package_fingerprint[:23] }}…</span></div>
     {% endif %}
   </section>
 
@@ -105,6 +108,36 @@
     <div id="verdict">{% if run.verdict %}<div class="verdict-word">Verdict: {{ run.verdict.outcome|upper|replace('_', ' ') }}</div>
       <ul class="reason">{% for r in run.verdict.reasoning %}<li class="sym-{{ r.sym }}">{{ r.text }}</li>{% endfor %}</ul>
       {% else %}<div class="kv muted">Derived locally once the result arrives.</div>{% endif %}</div>
+
+    {% if run.verdict %}
+    <div class="kv" style="margin-top:10px">Effective outcome:
+      <b>{{ run.effective_outcome|upper|replace('_', ' ') }}</b>
+      {% if run.outcome_source == 'review' %}<span class="badge warn">human-resolved</span>
+      {% elif run.outcome_source == 'error' %}<span class="muted">(error → inconclusive)</span>
+      {% else %}<span class="muted">(machine verdict)</span>{% endif %}
+    </div>
+    {% if run.review %}
+      <div class="kv"><span class="badge">Review</span> resolved <b>{{ run.review.resolution|upper }}</b> by
+         <b>{{ run.review.resolved_by }}</b> on {{ run.review.resolved_at[:19]|replace('T',' ') }}.
+         This human resolution is stored <em>alongside</em> the machine verdict
+         (<code>{{ run.verdict.outcome|replace('_',' ') }}</code>), never in place of it.</div>
+    {% elif run.verdict.outcome == 'needs_review' %}
+      <div class="recovery-note" style="margin-top:8px">
+        <b>Needs review.</b>
+        {% if run.verdict.rule == 3 %}No checks were declared, so Module 1 cannot decide mechanically.
+        {% else %}A declared check did not run, so Module 1 cannot decide mechanically.{% endif %}
+        A named human may record the outcome (VER-6); it is kept distinct from the machine verdict.
+        <form method="post" action="/runs/{{ run.run_id }}/review" class="run-grid" style="margin-top:8px">
+          <div class="field"><label>Resolution</label>
+            <select name="resolution" required><option value="passed">passed</option><option value="failed">failed</option></select></div>
+          <div class="field"><label>Your name (recorded)</label>
+            <input type="text" name="resolved_by" required placeholder="e.g. victor"
+                   style="font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px"/></div>
+          <div class="field" style="align-self:end"><button type="submit" class="primary">Record resolution</button></div>
+        </form>
+      </div>
+    {% endif %}
+    {% endif %}
   </section>
 
   <script id="run-meta" type="application/json">{{ {"run_id": run.run_id} | tojson }}</script>
