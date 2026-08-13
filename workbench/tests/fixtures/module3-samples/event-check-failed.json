@@ -1,0 +1,7 @@
+{
+  "run_id": "run-20260813-185957-167fc3",
+  "sequence": 7,
+  "timestamp": "2026-08-13T19:00:03Z",
+  "event_type": "check",
+  "message": "CHK-TESTS FAILED (exit 1)"
+}

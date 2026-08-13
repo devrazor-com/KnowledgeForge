@@ -1,0 +1,4 @@
+{
+  "http_status": 400,
+  "description": "Request was rejected at schema validation. The request body does not conform to validation-request.schema.json. package: 'name' is a required property"
+}

@@ -65,7 +65,7 @@ function renderError(d) {
     <div class="err-detail">${esc(d.detail || "")}</div>
     <div class="err-gw">${esc(gwNote)}</div>
     ${errorGuidance(d.error_kind)}
-    ${d.payload_text ? jsonPanelRaw("Raw response from Module 3 (as received)", d.payload_text) : ""}`;
+    ${d.payload_text ? jsonPanelRaw("Response body from Module 3 (as recorded by Module 1)", d.payload_text) : ""}`;
   const st = document.getElementById("run-state");
   if (st) { st.textContent = "error"; st.classList.add("state-error"); }
   // Downstream stages read as "not reached" rather than sitting blank/pending.
