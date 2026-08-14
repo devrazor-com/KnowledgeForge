@@ -123,6 +123,51 @@ def remove_package(source_id_: str):
     return RedirectResponse(url="/", status_code=303)
 
 
+@app.post("/packages/{source_id_}/change-root")
+def change_root(source_id_: str, root_path: str = Form(...)):
+    """Repoint an existing registration at a new machine-local root WITHOUT changing
+    identity. This is the operator repair for a package whose files moved (e.g. a
+    folder transferred from another machine): the new root must be a valid package
+    whose manifest declares the SAME durable package_id. Only the mutable
+    source/root association moves — package_id, validation profile, run history,
+    immutable snapshots and review/approval history are all preserved, and no
+    historical evidence is reinterpreted. A pure location change therefore never
+    makes otherwise-identical knowledge stale (staleness keys off the package
+    FINGERPRINT and validation context, never the root)."""
+    src = _source_or_404(source_id_)
+    registered_id = src.get("package_id")
+    if not registered_id:
+        # A NULL-id registration has no identity to preserve; there is nothing to keep
+        # continuous. The operator should register the (now valid) new root directly.
+        raise HTTPException(400, "This registration has no durable identity, so its root "
+                            "cannot be repointed. Remove it and register the new root directly.")
+    raw = (root_path or "").strip()
+    if not raw:
+        raise HTTPException(400, "A new package root path is required.")
+    norm = normalize_root(raw)
+    p = Path(norm)
+    if not p.exists():
+        raise HTTPException(400, f"Path does not exist: {norm}")
+    if not p.is_dir():
+        raise HTTPException(400, f"Not a directory: {norm}")
+    try:
+        manifest = read_manifest(p)
+    except PackageError as e:
+        raise HTTPException(400, f"The new root is not a valid package: {e}")
+    if manifest.package_id != registered_id:
+        raise HTTPException(400,
+            f"Identity mismatch: this package is registered as '{registered_id}', but the new "
+            f"root declares package_id '{manifest.package_id}'. Change root repoints the SAME "
+            f"package to a new location — it never changes identity. Register the new root "
+            f"separately if it is a different package.")
+    other = db.get_package_source_by_path(norm)
+    if other is not None and other["id"] != src["id"]:
+        raise HTTPException(409, f"That root is already registered (as '{other['id']}'). "
+                            "Remove that registration first.")
+    db.update_package_source_root(src["id"], norm)
+    return RedirectResponse(url=f"/packages/{src['id']}", status_code=303)
+
+
 def _package_context(source_id_: str):
     """Assemble a healthy package, overlay task active-state, and compute current status.
     Returns (src_view, profile, tasks, pstat) — pstat/tasks empty if unhealthy."""

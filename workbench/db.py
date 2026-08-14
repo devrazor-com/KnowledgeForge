@@ -211,6 +211,20 @@ def remove_package_source(source_id: str) -> bool:
         return cur.rowcount > 0
 
 
+def update_package_source_root(source_id: str, root_path: str) -> bool:
+    """Repoint an existing registration at a new machine-local root (the "Change
+    root" operator action). ONLY the mutable location moves: the row's `id`,
+    durable `package_id`, and `added_at` are preserved, and nothing keyed off
+    `package_id` (validation profile, run history, snapshots, review/approval) is
+    touched — the caller has already verified the new root's manifest declares the
+    SAME package_id. Returns True if a row was updated. Raises sqlite3.IntegrityError
+    if the new path already belongs to a different registration (UNIQUE)."""
+    with _connect() as con:
+        cur = con.execute(
+            "UPDATE package_source SET root_path=? WHERE id=?", (root_path, source_id))
+        return cur.rowcount > 0
+
+
 # --------------------------------------------------------------------------
 # Validation profile / review / approval (Step 3C-3)
 # --------------------------------------------------------------------------

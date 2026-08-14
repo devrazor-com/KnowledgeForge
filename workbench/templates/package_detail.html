@@ -22,6 +22,22 @@
       </td></tr>
     </table>
     <p><a href="/packages/{{ src.id }}/history" class="primary" style="text-decoration:none">Validation history →</a></p>
+    {% if src.registered_package_id %}
+    <details class="panel">
+      <summary>Change root</summary>
+      <p class="muted" style="margin:6px 0">Repoint this registration at a new folder — e.g. after moving the
+         package or transferring it from another machine. The new root must be a valid package whose manifest
+         declares the same <code>package_id</code> (<span class="fp">{{ src.registered_package_id }}</span>).
+         Only the machine-local location changes: identity, validation profile, run history, snapshots and
+         approvals are all preserved, and nothing becomes stale from the move alone.</p>
+      <form method="post" action="/packages/{{ src.id }}/change-root" class="run-grid">
+        <label>New package root (absolute path)
+          <input type="text" name="root_path" placeholder="C:\KnowledgeForge\packages\claims" required
+                 autocomplete="off" spellcheck="false"/></label>
+        <button type="submit" class="primary">Change root</button>
+      </form>
+    </details>
+    {% endif %}
     <form method="post" action="/packages/{{ src.id }}/remove" class="inline"
           onsubmit="return confirm('Remove this package from KnowledgeForge? This unregisters the package source. It does not delete the source files or historical validation evidence.');">
       <button type="submit" class="link-btn">remove this package source</button>
