@@ -33,9 +33,17 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 import _regutil
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# SIGSTOP/SIGCONT (POSIX-only) pause a live mock so a cancel delivery hangs and its
+# outcome is indeterminate. The one test that needs them skips cleanly on Windows.
+_needs_job_control = pytest.mark.skipif(
+    not (hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")),
+    reason="SIGSTOP/SIGCONT are POSIX-only (not available on Windows)")
 
 
 # --- process / http helpers ---------------------------------------------------
@@ -267,6 +275,7 @@ def test_known_non_delivery_then_retry_reaches_cancelled(tmp_path):
         _stop(wb1, mock1)
 
 
+@_needs_job_control
 def test_unknown_delivery_on_timeout(tmp_path):
     """A cancel that hits a post-connect TIMEOUT (Gateway paused) is 'unknown', NOT
     'undelivered': Module 1 cannot prove the request failed to arrive — indeed a

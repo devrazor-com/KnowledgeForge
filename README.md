@@ -41,9 +41,92 @@ never decides the outcome.
   sides validating against the schemas. It uses a synthetic domain and a mock
   Gateway. See [`poc/README.md`](poc/README.md).
 
+- **`workbench/`** — Module 1: the production Validation Workbench (server-rendered
+  FastAPI + Jinja + SSE, SQLite). See [`workbench/VERIFY.md`](workbench/VERIFY.md)
+  and the in-app **Help** page.
+
 ## Status
 
-**This repository currently contains a proof-of-concept, not the production
-application.** The POC exists to prove the Module 2 contract and to give the
-Execution Gateway a working reference to build the real Gateway against. The
-production Validation Workbench and Execution Gateway are built separately.
+The **Validation Workbench (Module 1)** is feature-complete against its 54 numbered
+requirements (see `workbench/REQUIREMENTS_AUDIT.md`). `contract/` (Module 2) is the
+frozen shared contract; `poc/` is a disposable end-to-end demonstration. The
+production Execution Gateway (Module 3) is built separately; Module 1 reaches it over
+HTTP at `MOD3_BASE_URL`, and a dev mock (`tools/mock_gateway/`) stands in locally.
+
+## Running the Validation Workbench
+
+The Workbench is pure Python — no Node, no build step. It needs Python 3.11+ and the
+packages in `workbench/requirements.txt`. **`MOD3_BASE_URL` is the only configuration
+required to point Module 1 at a Module 3 Gateway** (default `http://127.0.0.1:8003`,
+the dev mock). Pointing at the real Gateway on another host is one environment
+variable — e.g. `https://gateway.internal:8443`. (DNS, firewall/proxy egress, VPN and
+— for an internal-CA HTTPS Gateway — trusting that CA in the OS trust store are
+network-environment concerns, not application settings.)
+
+### macOS / Linux
+
+```bash
+python3 -m venv workbench/.venv
+./workbench/.venv/bin/pip install -r workbench/requirements.txt
+export MOD3_BASE_URL=http://127.0.0.1:8003        # or the real Gateway URL
+./workbench/.venv/bin/uvicorn workbench.app:app --port 8010
+# tests:
+./workbench/.venv/bin/python -m pytest workbench/tests -q
+```
+
+### Windows
+
+The Workbench runs natively on Windows. The only differences are the venv layout
+(`Scripts\` instead of `bin/`) and how environment variables are set.
+
+**PowerShell**
+```powershell
+py -3 -m venv workbench\.venv
+workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
+$env:MOD3_BASE_URL = "http://127.0.0.1:8003"      # or the real Gateway URL
+workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010
+# tests:
+workbench\.venv\Scripts\python -m pytest workbench\tests -q
+```
+
+**Command Prompt (cmd.exe)**
+```bat
+py -3 -m venv workbench\.venv
+workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
+set MOD3_BASE_URL=http://127.0.0.1:8003
+workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010
+```
+`$env:MOD3_BASE_URL` (PowerShell) and `set MOD3_BASE_URL=` (cmd) each set the variable
+for that shell only. To activate the venv instead of calling its `python` directly:
+`workbench\.venv\Scripts\Activate.ps1` (PowerShell) or `workbench\.venv\Scripts\activate.bat`
+(cmd); the macOS/Linux equivalent is `source workbench/.venv/bin/activate`.
+
+**A few tests skip on Windows, by design.** Two tests pause a live mock process with
+POSIX `SIGSTOP`/`SIGCONT` to simulate a Gateway that is unreachable-but-intact; those
+signals do not exist on Windows, so the two tests report `skipped` (not failed) with a
+clear reason. Everything they protect that *can* be exercised without job control —
+recovery bookkeeping, cancellation-delivery states, the transport classifier — is
+covered by platform-neutral tests that still run. A green run on Windows shows a small
+skip count; that is expected.
+
+### Moving a package folder between machines (Change root)
+
+A package's **durable identity** (`package_id`, its validation history and approvals)
+is independent of *where* the folder currently lives. When you copy a package folder to
+a different machine — e.g. from a Mac to a Windows work machine — the old registered
+path no longer exists there, so that registration shows **Unhealthy — "Registered root
+no longer exists."** This is expected, not corruption.
+
+The repair is **Change root** on the package detail page: point the registration at the
+folder's new absolute location (e.g. `C:\KnowledgeForge\packages\claims`). The new root
+must be a valid package whose manifest declares the **same** `package_id`; Module 1
+verifies that and refuses a mismatch. Only the machine-local location moves —
+`package_id`, the validation profile, run history, immutable snapshots and approval
+history are all preserved, and because the knowledge bytes are unchanged, nothing
+becomes stale from the move. (Line endings don't matter: fingerprints normalise
+CRLF/LF, so the same content hashes identically on Windows and macOS.)
+
+If you'd rather not carry a database across machines at all, start clean instead: bring
+only the code and the package folders, create a fresh venv, and register each package
+root and configure its profile fresh. See `workbench/VERIFY.md` for the transfer
+checklist and the trade-off between the two approaches.

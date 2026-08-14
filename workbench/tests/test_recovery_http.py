@@ -23,9 +23,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 import _regutil
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# SIGSTOP/SIGCONT pause/resume a live process to simulate a Gateway that is
+# unreachable-but-intact. They are POSIX-only (absent on Windows), so the ONE test
+# that needs them skips cleanly there; every other recovery test is platform-neutral.
+_HAS_JOB_CONTROL = hasattr(signal, "SIGSTOP") and hasattr(signal, "SIGCONT")
+_needs_job_control = pytest.mark.skipif(
+    not _HAS_JOB_CONTROL, reason="SIGSTOP/SIGCONT are POSIX-only (not available on Windows)")
 
 
 # --- process / http helpers ---------------------------------------------------
@@ -356,6 +365,7 @@ def test_recover_gateway_no_longer_recognises_run(tmp_path):
         _stop(wb, mock)
 
 
+@_needs_job_control
 def test_recover_gateway_unreachable_then_reachable(tmp_path):
     """Gateway temporarily unreachable during recovery (paused, state intact):
     the recovering status shows, and on resume the run completes normally."""

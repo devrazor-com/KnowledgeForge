@@ -32,10 +32,10 @@ def _wait_ready(port, timeout=25.0):
     return False
 
 
-def test_help_mentions_every_vocabulary_token():
+def test_help_mentions_every_vocabulary_token(tmp_path):
     from workbench import vocab
     port = _free_port()
-    env = os.environ.copy(); env["WORKBENCH_DB"] = "/tmp/kf_help_test.db"
+    env = os.environ.copy(); env["WORKBENCH_DB"] = str(tmp_path / "kf_help_test.db")
     wb = subprocess.Popen([sys.executable, "-m", "uvicorn", "workbench.app:app", "--port", str(port),
                            "--log-level", "warning"], cwd=str(REPO_ROOT), env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

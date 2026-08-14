@@ -23,6 +23,7 @@ rest sorted by path, so the fingerprint never depends on traversal order.
 from __future__ import annotations
 
 import hashlib
+import os
 import posixpath
 import re
 from pathlib import Path
@@ -49,10 +50,34 @@ class PackageError(ValueError):
 # --------------------------------------------------------------------------
 
 def normalize_root(path_str: str) -> str:
-    """Machine-local canonical form of an operator-supplied root path. Expands `~`
-    and resolves symlinks/`..`. This normalisation is for the REGISTRY only; it
-    never touches package-relative knowledge paths or the fingerprint."""
+    """Machine-local canonical form of an operator-supplied root path: expand `~` and
+    resolve symlinks / `.` / `..` / redundant separators. This is for the REGISTRY
+    only; it never touches package-relative knowledge paths or the fingerprint.
+
+    It deliberately does NOT try to manufacture a universally-canonical string. A
+    resolved path string cannot capture *physical* directory identity across every
+    representation: on a case-insensitive filesystem (default macOS APFS, Windows)
+    two differently-cased spellings resolve to different strings yet the same
+    directory, and on Windows a junction / 8.3 short name / mapped drive vs UNC path
+    are the same directory under different text. Physical-duplicate detection is done
+    separately, by comparing filesystem identity — see `same_physical_dir`. The stored
+    `root_path` remains this human-readable resolved path."""
     return str(Path(path_str).expanduser().resolve())
+
+
+def same_physical_dir(a: str, b: str) -> bool:
+    """True iff two path strings denote the SAME physical directory. Uses
+    ``os.path.samefile``, which compares filesystem identity (device + inode on POSIX,
+    file-id on supported Windows filesystems) rather than text, so it sees through case
+    variants, symlinks, junctions, 8.3 short names, and mapped-drive-vs-UNC spellings.
+
+    A path that cannot be stat'ed (missing or unreadable) yields ``False`` rather than
+    raising: a broken/unavailable registered source must never block a new
+    registration, and it simply isn't a physical match for anything present."""
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return False
 
 
 def source_id(root_path: str) -> str:

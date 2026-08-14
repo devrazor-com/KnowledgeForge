@@ -24,7 +24,8 @@ from fastapi.templating import Jinja2Templates
 from workbench import config, db, orchestrator
 from workbench import status as vstatus
 from workbench.packages import (
-    PackageError, catalog_status, load_source, normalize_root, read_manifest, source_id,
+    PackageError, catalog_status, load_source, normalize_root, read_manifest,
+    same_physical_dir, source_id,
 )
 
 _NO_STORE = {"Cache-Control": "no-store"}   # the catalog/detail reflect live registry state
@@ -48,6 +49,20 @@ def _source_or_404(source_id_: str) -> dict:
     if src is None:
         raise HTTPException(404, f"Unknown package source '{source_id_}'")
     return src
+
+
+def _physical_duplicate(norm: str, exclude_id: str | None = None) -> dict | None:
+    """The already-registered source whose root is the SAME physical directory as
+    `norm` (reached through a different textual path — a case variant, symlink,
+    junction, mapped drive, …), or None. A registered root that can no longer be
+    stat'ed is skipped, never allowed to block: `same_physical_dir` returns False for
+    it. At ~50 sources this trivial scan is fine; it needs no index or cache."""
+    for s in db.list_package_sources():
+        if exclude_id is not None and s["id"] == exclude_id:
+            continue
+        if same_physical_dir(norm, s["root_path"]):
+            return s
+    return None
 
 
 def _packages_view(request: Request, add_error: str | None = None, status: int = 200):
@@ -95,8 +110,14 @@ def add_package(request: Request, root_path: str = Form(...)):
     if not p.is_dir():
         return _packages_view(request, f"Not a directory: {norm}", status=400)
     existing = db.get_package_source_by_path(norm)
-    if existing is not None:                       # already registered (any id) → open it
+    if existing is not None:                       # already registered (exact path) → open it
         return RedirectResponse(url=f"/packages/{existing['id']}", status_code=303)
+    # Same PHYSICAL directory reached through a different textual path (case variant on a
+    # case-insensitive FS, symlink, junction, mapped drive) → treat as already registered
+    # and open it, rather than creating a second registration of one directory.
+    phys = _physical_duplicate(norm)
+    if phys is not None:
+        return RedirectResponse(url=f"/packages/{phys['id']}", status_code=303)
     # Resolve the durable identity if the package is structurally valid. An unhealthy
     # root (no/invalid manifest or package_id) is still registered — with a NULL id —
     # so it stays visible as Unhealthy with a reason.
@@ -164,6 +185,15 @@ def change_root(source_id_: str, root_path: str = Form(...)):
     if other is not None and other["id"] != src["id"]:
         raise HTTPException(409, f"That root is already registered (as '{other['id']}'). "
                             "Remove that registration first.")
+    # Same guard by PHYSICAL identity, not just exact string: refuse repointing onto a
+    # directory already registered as a different source, even via a different spelling
+    # (case variant, symlink, junction, mapped drive). One physical directory backs at
+    # most one registration.
+    phys = _physical_duplicate(norm, exclude_id=src["id"])
+    if phys is not None:
+        raise HTTPException(409, f"That directory is already registered as '{phys['id']}' "
+                            "(reached here through a different path). Remove that "
+                            "registration first.")
     db.update_package_source_root(src["id"], norm)
     return RedirectResponse(url=f"/packages/{src['id']}", status_code=303)
 
