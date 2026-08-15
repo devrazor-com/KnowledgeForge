@@ -37,6 +37,7 @@ import pytest
 
 import _regutil
 
+from _regutil import start_server as _start, wait_ready as _wait_ready, stop_server as _stop
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # SIGSTOP/SIGCONT (POSIX-only) pause a live mock so a cancel delivery hangs and its
@@ -50,36 +51,6 @@ _needs_job_control = pytest.mark.skipif(
 
 def _free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
-
-
-def _wait_ready(port, timeout=25.0):
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            time.sleep(0.2)
-    return False
-
-
-def _start(module, port, env):
-    return subprocess.Popen([sys.executable, "-m", "uvicorn", module, "--port", str(port), "--log-level", "warning"],
-                            cwd=str(REPO_ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _stop(*procs):
-    for p in procs:
-        if p is None:
-            continue
-        try:
-            p.terminate(); p.wait(timeout=5)
-        except Exception:
-            try:
-                p.kill()
-            except Exception:
-                pass
 
 
 def _wb_env(mock_port, dbpath, timeout=180, guard=1, http_timeout=None):

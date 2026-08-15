@@ -123,15 +123,18 @@ def test_same_physical_dir_distinct_dirs_do_not_match(tmp_path):
     assert same_physical_dir(str(a), str(b)) is False
 
 
-def test_case_variant_is_one_physical_dir_though_strings_differ(tmp_path):
+def test_case_variant_is_one_physical_dir(tmp_path):
     """On a case-insensitive filesystem (default macOS APFS, Windows), two cases of a
-    name are the SAME directory. `normalize_root` yields DIFFERENT strings for them —
-    which is exactly why string comparison is not enough and `same_physical_dir` must
-    catch the duplicate. Skips where the filesystem really is case-sensitive."""
+    name are the SAME physical directory — the invariant `same_physical_dir` must see.
+
+    We deliberately do NOT assert anything about the intermediate `normalize_root`
+    strings: whether they differ is environment-dependent (macOS APFS keeps the two
+    spellings distinct; on the Windows machine we tested, `Path.resolve()` had already
+    collapsed both to one on-disk casing). Asserting they differ was a macOS-specific
+    assumption that failed on Windows. The property under test is physical identity."""
     if not _fs_is_case_insensitive(tmp_path):
         pytest.skip("filesystem is case-sensitive; case variants are genuinely distinct dirs")
     lower = tmp_path / "claims"
     lower.mkdir()
     upper_str = str(tmp_path / "CLAIMS")
-    assert normalize_root(str(lower)) != normalize_root(upper_str)   # strings differ...
-    assert same_physical_dir(str(lower), upper_str)                  # ...but same physical dir
+    assert same_physical_dir(str(lower), upper_str)     # same physical dir, however the strings resolve

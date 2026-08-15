@@ -13,6 +13,7 @@ import time
 import urllib.request
 from pathlib import Path
 
+from _regutil import start_server as _start, wait_ready as _wait_ready, stop_server as _stop
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -20,25 +21,11 @@ def _free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 
-def _wait_ready(port, timeout=25.0):
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            time.sleep(0.2)
-    return False
-
-
 def test_help_mentions_every_vocabulary_token(tmp_path):
     from workbench import vocab
     port = _free_port()
     env = os.environ.copy(); env["WORKBENCH_DB"] = str(tmp_path / "kf_help_test.db")
-    wb = subprocess.Popen([sys.executable, "-m", "uvicorn", "workbench.app:app", "--port", str(port),
-                           "--log-level", "warning"], cwd=str(REPO_ROOT), env=env,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    wb = _start("workbench.app:app", port, env)
     try:
         assert _wait_ready(port)
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/help", timeout=5) as r:
@@ -52,7 +39,7 @@ def test_help_mentions_every_vocabulary_token(tmp_path):
         # A Help link is present in the nav.
         assert 'href="/help"' in urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5).read().decode()
     finally:
-        wb.terminate(); wb.wait(timeout=5)
+        _stop(wb)
 
 
 def test_vocab_matches_live_code():

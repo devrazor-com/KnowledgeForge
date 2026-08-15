@@ -19,6 +19,7 @@ import urllib.request
 from pathlib import Path
 
 import _regutil
+from _regutil import start_server as _start, wait_ready as _wait_ready, stop_server as _stop
 
 import pytest
 
@@ -28,33 +29,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 def _free_port() -> int:
     s = socket.socket(); s.bind(("127.0.0.1", 0)); port = s.getsockname()[1]; s.close()
     return port
-
-
-def _wait_ready(port: int, timeout: float = 25.0) -> bool:
-    end = time.time() + timeout
-    while time.time() < end:
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
-                if r.status == 200:
-                    return True
-        except Exception:
-            time.sleep(0.2)
-    return False
-
-
-def _start(module: str, port: int, env: dict) -> subprocess.Popen:
-    return subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", module, "--port", str(port), "--log-level", "warning"],
-        cwd=str(REPO_ROOT), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _stop(*procs):
-    for p in procs:
-        p.terminate()
-        try:
-            p.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            p.kill()
 
 
 def _start_run(wb_port: int, forced_outcome=None, fault=None) -> str:
