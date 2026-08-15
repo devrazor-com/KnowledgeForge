@@ -55,19 +55,26 @@ HTTP at `MOD3_BASE_URL`, and a dev mock (`tools/mock_gateway/`) stands in locall
 
 ## Running the Validation Workbench
 
-The Workbench is pure Python — no Node, no build step. It needs Python 3.11+ and the
-packages in `workbench/requirements.txt`. **`MOD3_BASE_URL` is the only configuration
-required to point Module 1 at a Module 3 Gateway** (default `http://127.0.0.1:8003`,
-the dev mock). Pointing at the real Gateway on another host is one environment
-variable — e.g. `https://gateway.internal:8443`. (DNS, firewall/proxy egress, VPN and
-— for an internal-CA HTTPS Gateway — trusting that CA in the OS trust store are
-network-environment concerns, not application settings.)
+The Workbench is pure Python — no Node, no build step. **Supported interpreter:
+Python 3.12** (`>=3.12,<3.13`; recorded in `.python-version`). Mac and Windows
+integration are both verified on Python 3.12; Python 3.14 is not currently supported
+for Windows integration (our validation suite exhibits materially more Windows asyncio
+accept failures under it — see `workbench/REQUIREMENTS_CLARIFICATIONS.md`). Dependencies
+are in `workbench/requirements.txt` (direct deps, pinned exactly); for a reproducible
+environment install the full pinned closure instead:
+`pip install -r workbench/requirements.lock`.
+
+**`MOD3_BASE_URL` is the only configuration required to point Module 1 at a Module 3
+Gateway** (default `http://127.0.0.1:8003`, the dev mock). Pointing at the real Gateway
+on another host is one environment variable — e.g. `https://gateway.internal:8443`.
+(DNS, firewall/proxy egress, VPN and — for an internal-CA HTTPS Gateway — trusting that
+CA in the OS trust store are network-environment concerns, not application settings.)
 
 ### macOS / Linux
 
 ```bash
-python3 -m venv workbench/.venv
-./workbench/.venv/bin/pip install -r workbench/requirements.txt
+python3.12 -m venv workbench/.venv
+./workbench/.venv/bin/pip install -r workbench/requirements.txt   # or requirements.lock for the exact pinned closure
 export MOD3_BASE_URL=http://127.0.0.1:8003        # or the real Gateway URL
 ./workbench/.venv/bin/uvicorn workbench.app:app --port 8010
 # tests:
@@ -81,8 +88,8 @@ The Workbench runs natively on Windows. The only differences are the venv layout
 
 **PowerShell**
 ```powershell
-py -3 -m venv workbench\.venv
-workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
+py -3.12 -m venv workbench\.venv
+workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt   # or requirements.lock
 $env:MOD3_BASE_URL = "http://127.0.0.1:8003"      # or the real Gateway URL
 workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010
 # tests:
@@ -91,7 +98,7 @@ workbench\.venv\Scripts\python -m pytest workbench\tests -q
 
 **Command Prompt (cmd.exe)**
 ```bat
-py -3 -m venv workbench\.venv
+py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
 set MOD3_BASE_URL=http://127.0.0.1:8003
 workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010

@@ -2,10 +2,19 @@
 # Simplest stack that works: FastAPI + Jinja + SQLite (stdlib) + PyYAML for
 # front matter + jsonschema for Module 2 contract validation. The Gateway client
 # uses only the standard library (urllib).
-fastapi>=0.110
-uvicorn>=0.29
-jinja2>=3.1
-python-multipart>=0.0.9
-pyyaml>=6.0
-jsonschema>=4.21
-pytest>=8.0
+#
+# Supported interpreter: Python 3.12 (see .python-version, README, VERIFY.md).
+#
+# DIRECT dependencies, pinned exactly so a fresh Mac and Windows integration
+# environment install the same versions. Exact top-level pins do NOT by themselves
+# guarantee full reproducibility — transitive dependencies can still drift. For the
+# complete, pinned transitive closure (with a platform marker for the Windows-only
+# colorama), install from requirements.lock instead:
+#     pip install -r workbench/requirements.lock
+fastapi==0.141.1
+uvicorn==0.52.3
+jinja2==3.1.6
+python-multipart==0.0.32
+pyyaml==6.0.3
+jsonschema==4.26.0
+pytest==9.1.1

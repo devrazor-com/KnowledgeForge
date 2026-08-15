@@ -7,6 +7,13 @@ get identical behaviour, which local reruns alone don't prove.
 Commands assume you're at the repository root. Windows equivalents:
 `workbench\.venv\Scripts\...` instead of `./workbench/.venv/bin/...`.
 
+**Supported interpreter: Python 3.12** (`>=3.12,<3.13`, recorded in `.python-version`).
+Build the venv with `python3.12` (macOS/Linux) or `py -3.12` (Windows) so Mac and
+Windows integration run the same asyncio implementation. For a reproducible environment,
+install the fully-pinned closure with `pip install -r workbench/requirements.lock`
+instead of `requirements.txt` — the lock marks the Windows-only `colorama` with an
+environment marker, so the same file is correct on both OSes.
+
 1. **Tests pass.**
    ```
    ./workbench/.venv/bin/python -m pytest workbench/tests -q

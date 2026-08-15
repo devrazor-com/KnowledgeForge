@@ -129,6 +129,74 @@ structural loader config is never conflated with knowledge evidence. Full spec:
 change its fingerprint if the same knowledge files at the same relative paths are
 assembled (verified for Larkspur).
 
+## Cross-OS fingerprint stability is empirically confirmed on Windows (post-v1.0, settled)
+
+Fingerprint machine-independence — the property that staleness and approval semantics
+rest on (a run's evidence is keyed to knowledge content, not to the machine it ran on)
+— is now confirmed on a **real Windows machine**, not merely simulated by LF/CRLF unit
+tests. In a complete Windows run (Larkspur registered from a Windows path, profile
+configured, one full validation to a PASSED rule-#6 verdict), the fingerprints matched
+the established macOS values **byte-for-byte**:
+
+- Larkspur **package** fingerprint:
+  `sha256:ab62f181e48dcb0d1cff0a3cdeb606ed33308dd6ef08aa5b5312fcdb62ea6ac9`
+- `LARK-TASK-001` **task** fingerprint:
+  `sha256:16ad18f5a74dc880463bcb38a9b6cedcdb81a6b23e3c8b7d56bd4e1243e844c9`
+
+This validates in practice what `fingerprints.normalize_content` (CRLF/CR → LF) and the
+POSIX package-relative paths were designed to guarantee. No fingerprint code changed as
+part of confirming this; the value here is the empirical cross-machine evidence.
+
+## Supported Python baseline: 3.12 (post-v1.0, settled)
+
+**Python 3.12 is the supported integration/development baseline** (`>=3.12,<3.13`;
+declared in `.python-version`, README, VERIFY.md). Both Mac and Windows integration are
+verified on 3.12. Evidence (one full suite run per interpreter; the failure mode is
+intermittent, so this is strong empirical evidence, not a controlled proof):
+
+- Mac 3.12: 166 passed.
+- Windows 3.12.6: 158 passed / 4 failed / 4 skipped.
+- Windows 3.14.4: 143 passed / 15 failed / 4 skipped / 1 error.
+- The relevant dependency versions were **identical** across the two Windows venvs
+  (uvicorn 0.52.3, fastapi 0.141.1, starlette 1.6.0, anyio 4.14.2, h11 0.16.0,
+  pydantic 2.13.4, pytest 9.1.1, click 8.4.2, jsonschema 4.26.0), so the interpreter —
+  not a dependency version — is the material environment difference.
+
+We record the **support decision**, not a causal claim about a specific interpreter
+defect: Python 3.14 is not currently supported for Windows integration because our
+validation suite exhibits materially more Windows asyncio accept failures under it. The
+range is pinned to the single 3.12 minor line so Mac and Windows run the **same asyncio
+implementation** — the earlier Mac-3.11 / Windows-3.14 split is precisely the confound
+that produced divergent results. Dependencies are pinned (`requirements.txt` direct pins;
+`requirements.lock` full closure with a `sys_platform == "win32"` marker for the
+Windows-only `colorama`) so the environment does not drift underneath the baseline.
+
+## Transport classification is structural and evidence-bounded; timeout ≠ non-delivery (post-v1.0, settled — Windows evidence)
+
+`gateway_client._classify` categorises a transport failure from the **exception
+structure** (`socket.timeout`/`TimeoutError` → `timeout`; `socket.gaierror` → `dns`;
+`ConnectionRefusedError`/`errno.ECONNREFUSED` → `refused`; else `other`), never from
+message text. Only `refused`/`dns` are in `NON_DELIVERY_REASONS` — the reasons that
+**positively prove** the request never reached Module 3. This is correct and must not
+change; do not widen `NON_DELIVERY_REASONS`.
+
+Windows made the distinction concrete and repeatable:
+
+- Connecting to a *released* high loopback port (obtained and closed exactly as the test
+  harness does) yielded `URLError` wrapping `TimeoutError('timed out')`, `errno=None`,
+  `winerror=None` → `_classify` = `timeout`. A timeout does **not** prove non-delivery,
+  so a cancellation attempt correctly resolves to `cancel_delivery = unknown`, and a
+  fresh-start attempt would remain the conservative unreachable/indeterminate outcome.
+- Killing the actual Gateway (mock on port 8003) yielded a **structured** refusal
+  (`WinError 10061` → `ConnectionRefusedError`) → `_classify` = `refused` → Module 1
+  reported the Gateway unreachable and marked stages not reached, no result fabricated.
+
+So: this environment *can* produce a true refusal; a *supposedly* unused port does
+**not** necessarily produce one; the classifier must classify the evidence it actually
+receives. The failing `test_sticky_acknowledged_not_downgraded_by_failed_retry` encodes
+the environment-dependent assumption that "no listener ⇒ immediate refusal"; that is a
+**test** defect (to be corrected in the harness work), not a classifier defect.
+
 ## Operator-supplied local package roots are a trusted-localhost decision (Step 3C-1, settled — NFR-6)
 
 Registering an operator-supplied absolute path (`package_source`) lets the Workbench
