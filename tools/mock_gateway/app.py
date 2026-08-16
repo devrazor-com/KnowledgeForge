@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import random
 import sys
 from datetime import datetime, timezone
@@ -42,8 +43,25 @@ CONTRACT_DIR = HERE.parents[1] / "contract"
 FIXTURES = HERE / "fixtures"
 
 TERMINAL_EVENTS = {"completed", "failed", "cancelled"}
-EVENT_DELAY_SECONDS = 0.6
+DEFAULT_EVENT_DELAY_SECONDS = 0.6
 DELAYED_RESULT_NULLS = 4   # `delayed_result` fault: this many null result polls before publishing
+
+
+def _event_delay_seconds() -> float:
+    """Seconds the mock waits between emitted events. Dev-only knob: defaults to
+    DEFAULT_EVENT_DELAY_SECONDS (0.6) and is overridden by MOCK_EVENT_DELAY_SECONDS.
+    Used by the Windows Phase-D recovery acceptance to widen the active-run window so
+    the Workbench can be stopped/restarted mid-run deterministically. Parses defensively:
+    any missing / non-numeric / negative value falls back to the default. This affects
+    ONLY the dev mock's pacing — no Module 1 behaviour, contract, or timeout changes."""
+    raw = os.environ.get("MOCK_EVENT_DELAY_SECONDS")
+    if raw is None:
+        return DEFAULT_EVENT_DELAY_SECONDS
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_EVENT_DELAY_SECONDS
+    return value if value >= 0 else DEFAULT_EVENT_DELAY_SECONDS
 
 OUTCOME_POOL = {
     "success": ("events-success.json", "result-success.json"),
@@ -149,9 +167,10 @@ def _mk_event(run: Run, template: dict, sequence: int) -> dict:
 
 async def _emit(run: Run) -> None:
     fault = run.fault
+    delay = _event_delay_seconds()   # fixed per run; MOCK_EVENT_DELAY_SECONDS override
 
     if fault in SEQUENCE_FAULTS:  # tamper the sequence numbers (events stay schema-valid)
-        await asyncio.sleep(EVENT_DELAY_SECONDS)
+        await asyncio.sleep(delay)
         async with run.lock:  # emit the whole tampered prefix atomically (one batch)
             for i, seq in enumerate(SEQUENCE_FAULTS[fault]):
                 tmpl = run.planned[min(i, len(run.planned) - 1)]
@@ -161,12 +180,12 @@ async def _emit(run: Run) -> None:
         return  # never reaches terminal; Module 1 stops on the anomaly
 
     if fault == "invalid_event":  # one valid event, then a deliberately schema-invalid one
-        await asyncio.sleep(EVENT_DELAY_SECONDS)
+        await asyncio.sleep(delay)
         async with run.lock:
             ev = _mk_event(run, run.planned[0], 1)
             _validate_or_die(_EVENT, ev, "event")
             run.emitted.append(ev)
-        await asyncio.sleep(EVENT_DELAY_SECONDS)
+        await asyncio.sleep(delay)
         async with run.lock:
             run.emitted.append({"run_id": run.run_id, "sequence": 2, "timestamp": _now(),
                                 "event_type": "totally_invalid_type",
@@ -175,7 +194,7 @@ async def _emit(run: Run) -> None:
 
     if fault == "never_terminal":  # accept, emit a couple of events, never terminate
         for tmpl in run.planned[:2]:
-            await asyncio.sleep(EVENT_DELAY_SECONDS)
+            await asyncio.sleep(delay)
             async with run.lock:
                 if run.terminal:
                     return
@@ -187,7 +206,7 @@ async def _emit(run: Run) -> None:
     # Normal emission (also used for http_* / malformed / invalid_result faults,
     # which are injected at the events/result endpoints, not here).
     for tmpl in run.planned:
-        await asyncio.sleep(EVENT_DELAY_SECONDS)
+        await asyncio.sleep(delay)
         async with run.lock:
             if run.terminal:   # cancelled while we were sleeping — stop cleanly
                 return
