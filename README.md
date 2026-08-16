@@ -83,15 +83,22 @@ export MOD3_BASE_URL=http://127.0.0.1:8003        # or the real Gateway URL
 
 ### Windows
 
-The Workbench runs natively on Windows. The only differences are the venv layout
-(`Scripts\` instead of `bin/`) and how environment variables are set.
+The Workbench runs natively on Windows. The differences are the venv layout (`Scripts\`
+instead of `bin/`), how environment variables are set, and — importantly — **how you
+start it**. On Windows, start Module 1 with the launcher **`python -m
+workbench.run_workbench`**, not a bare `uvicorn` command. The launcher selects a
+Selector event loop; the default Proactor loop can be left alive-but-unable-to-accept by
+an aborted incoming connection (see `workbench/REQUIREMENTS_CLARIFICATIONS.md`, "Windows
+event loop"). Startup prints `[workbench] serving on event loop: _WindowsSelectorEventLoop`
+— confirm that line. (`run_workbench` works on every OS; off Windows it uses the default
+loop.)
 
 **PowerShell**
 ```powershell
 py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt   # or requirements.lock
 $env:MOD3_BASE_URL = "http://127.0.0.1:8003"      # or the real Gateway URL
-workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010
+workbench\.venv\Scripts\python -m workbench.run_workbench          # protected Windows launch (Selector loop)
 # tests:
 workbench\.venv\Scripts\python -m pytest workbench\tests -q
 ```
@@ -101,7 +108,7 @@ workbench\.venv\Scripts\python -m pytest workbench\tests -q
 py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
 set MOD3_BASE_URL=http://127.0.0.1:8003
-workbench\.venv\Scripts\python -m uvicorn workbench.app:app --port 8010
+workbench\.venv\Scripts\python -m workbench.run_workbench
 ```
 `$env:MOD3_BASE_URL` (PowerShell) and `set MOD3_BASE_URL=` (cmd) each set the variable
 for that shell only. To activate the venv instead of calling its `python` directly:

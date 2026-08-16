@@ -171,6 +171,33 @@ that produced divergent results. Dependencies are pinned (`requirements.txt` dir
 `requirements.lock` full closure with a `sys_platform == "win32"` marker for the
 Windows-only `colorama`) so the environment does not drift underneath the baseline.
 
+## Windows event loop: serve on the Selector loop, not the Proactor loop (post-v1.0, settled — source + Windows A/B)
+
+On Windows the default asyncio **ProactorEventLoop** has a real accept-loop failure. In
+CPython 3.12 `windows_events.IocpProactor.accept.finish_accept` calls `ov.getresult()`
+with no handler, so an accept-time **`WinError 64` (ERROR_NETNAME_DELETED)** — produced
+when an incoming connection is aborted while `AcceptEx` is completing — escapes;
+`proactor_events.BaseProactorEventLoop._start_serving` catches it in `except OSError`,
+logs `Accept failed on a socket`, **closes the listening socket, and does not re-arm
+accept** (the re-arm is only on the success `else` branch). The process stays alive but
+can no longer accept connections. Verified from the Windows 3.12.6 stdlib and reproduced
+in a standalone A/B: ordinary `uvicorn.run()` (Proactor) and a manual Proactor server
+both lost the listener in **fewer than 500** abortive connections, while a Selector
+server survived **10,000** across two runs with no accept error. The **SelectorEventLoop**
+registers its listener once via `_add_reader` and keeps it across per-accept errors (only
+the resource-exhaustion path removes and re-schedules it), so it is not exposed to this.
+
+**Mitigation (launcher/config boundary; no request-behaviour change):** start Module 1
+with `python -m workbench.run_workbench`, which on Windows selects the Selector loop
+through uvicorn's own custom loop-factory (`workbench.winloop:selector_loop_factory`).
+uvicorn's `Server.run()` still owns the `asyncio.Runner` and shutdown lifecycle — the
+manually-driven `loop.run_until_complete(server.serve())` pattern regressed clean Ctrl-C
+and is deliberately not used. The launcher makes the safe loop automatic on Windows (no
+`--loop` flag to forget) and is a no-op elsewhere. App startup logs the live loop
+(`[workbench] serving on event loop: …`) so a Windows launch is positively confirmed to
+serve on `_WindowsSelectorEventLoop`. Module 1 uses no asyncio subprocesses,
+`add_reader` on non-sockets, or other Proactor-only features, so it is Selector-compatible.
+
 ## Transport classification is structural and evidence-bounded; timeout ≠ non-delivery (post-v1.0, settled — Windows evidence)
 
 `gateway_client._classify` categorises a transport failure from the **exception
