@@ -340,29 +340,38 @@ def test_cancel_5xx_stays_unknown(tmp_path):
 
 
 def test_sticky_acknowledged_not_downgraded_by_failed_retry(tmp_path):
-    """Once acknowledged, a later failed operator attempt (here connection refused,
-    the Gateway being down) must NOT downgrade the durable state. The immediate
-    response still describes the failed attempt."""
+    """Once acknowledged, a LATER failed operator cancel must NOT downgrade the durable
+    state. The later failure is made DETERMINISTIC with the mock's cancel_fault='http_500'
+    (a controlled Gateway 5xx -> 'unknown'), so the test never depends on host/OS
+    closed-port networking — an unstarted port refuses on some platforms (-> undelivered)
+    and times out on others (-> unknown), which is exactly the environment-dependence the
+    earlier no-listener version relied on. Reuses cancel_fault='http_500' and the CANCELS
+    physical-request counter; the production classifier is unchanged."""
     mock_port, wb_port = _free_port(), _free_port()
     dbpath = tmp_path / "wb.db"
-    env = _wb_env(mock_port, dbpath, timeout=180, guard=1, http_timeout=2)
-    # Seed a run that is running, already acknowledged (Gateway acked a prior cancel
-    # but the cancelled event hasn't been observed yet). No mock is started, so the
-    # cancel call is refused.
-    _seed_running(dbpath, mock_port, "run-sticky", cancel_requested=1, cancel_delivery="acknowledged")
-    wb = _start("workbench.app:app", wb_port, env)
+    env = _wb_env(mock_port, dbpath, timeout=180, guard=1)
+    mock = _start("tools.mock_gateway.app:app", mock_port, env)
     try:
+        assert _wait_ready(mock_port)
+        run_id = "run-sticky-ack"
+        # Seed: running, and a PRIOR cancel already acknowledged (durable sticky state).
+        request = _seed_running(dbpath, mock_port, run_id, cancel_requested=1, cancel_delivery="acknowledged")
+        # Register the run in the mock so a LATER cancel deterministically errors with 5xx.
+        _mock_start_direct(mock_port, request, fault="never_terminal", cancel_fault="http_500", forced="success")
+        wb = _start("workbench.app:app", wb_port, env)
         assert _wait_ready(wb_port)
-        _poll(wb_port, "run-sticky", lambda v: v["run_state"] == "running", timeout=10)
-        assert _api(wb_port, "run-sticky")["cancel_delivery"] == "acknowledged"
-        r = _cancel(wb_port, "run-sticky")   # Gateway down → refused → attempt 'undelivered'
-        assert r["attempt"] == "undelivered"                     # this attempt failed to deliver
-        assert r["delivery"] == "acknowledged"                   # durable knowledge NOT downgraded
-        assert r["attempt_message"] and "could not reach" in r["attempt_message"]
-        assert _api(wb_port, "run-sticky")["cancel_delivery"] == "acknowledged"
+        _poll(wb_port, run_id, lambda v: v["run_state"] == "running", timeout=10)
+        assert _api(wb_port, run_id)["cancel_delivery"] == "acknowledged"   # prior sticky state
+
+        r = _cancel(wb_port, run_id)                       # later operator cancel -> mock 5xx
+        assert r["attempt"] == "unknown"                   # a 5xx attempt is indeterminate...
+        assert r["delivery"] == "acknowledged"             # ...and does NOT downgrade the sticky state
+        assert r["attempt_message"] and "uncertain" in r["attempt_message"].lower()
+        assert _api(wb_port, run_id)["cancel_delivery"] == "acknowledged"   # durable unchanged
+        assert _mock_info(mock_port)["cancels"].get(run_id, 0) == 1         # exactly one physical cancel
         _stop(wb)
     finally:
-        _stop(wb)
+        _stop(mock)
 
 
 def test_post_timeout_cleanup_does_not_touch_operator_fields(tmp_path):

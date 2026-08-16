@@ -50,9 +50,17 @@ def start_server(module: str, port: int, env: dict, cwd: str | None = None) -> s
     log = tempfile.NamedTemporaryFile(
         prefix=f"kf-server-{port}-", suffix=".log", delete=False)
     log_path = log.name
+    args = [sys.executable, "-m", "uvicorn", module, "--port", str(port), "--log-level", "warning"]
+    if sys.platform.startswith("win"):
+        # Windows-only: serve harness child servers on the SELECTOR loop, matching the
+        # production run_workbench launcher. The default Proactor loop can lose its
+        # listener to WinError 64 during accept under the readiness probe's connect/abort
+        # pattern (see REQUIREMENTS_CLARIFICATIONS.md, "Windows event loop"). Reuses the
+        # production factory so the harness exercises the exact loop the product ships.
+        # No-op on macOS/Linux (they never use Proactor).
+        args += ["--loop", "workbench.winloop:selector_loop_factory"]
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", module, "--port", str(port), "--log-level", "warning"],
-        cwd=str(cwd or REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
+        args, cwd=str(cwd or REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
     log.close()
     _SERVERS[port] = (proc, log_path)
     return proc
