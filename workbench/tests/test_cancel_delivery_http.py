@@ -418,3 +418,38 @@ def test_post_timeout_cleanup_does_not_touch_operator_fields(tmp_path):
         assert not v2["cancel_requested"] and v2["cancel_delivery"] is None
     finally:
         _stop(wb, mock)
+
+
+def test_cancel_5xx_sends_exactly_one_physical_request(tmp_path):
+    """MECHANISM, not just state: when the Gateway returns 5xx to cancel, Module 1 must
+    transmit EXACTLY ONE physical cancel HTTP request — no automatic retry. A state-only
+    assertion (cancel_delivery == 'unknown') would stay green even if hidden retries
+    still occurred, so this counts the physical requests the mock actually received
+    (the mock increments CANCELS on every cancel invocation, before its fault branch).
+
+    Rationale: repeated cancel is contractually undefined and a 5xx does not establish
+    whether the first cancel was acted upon; Module 1 records 'unknown' and lets the
+    operator decide, rather than silently re-issuing an undefined repeat call."""
+    mock_port, wb_port = _free_port(), _free_port()
+    dbpath = tmp_path / "wb.db"
+    env = _wb_env(mock_port, dbpath, timeout=180, guard=1)
+    mock = _start("tools.mock_gateway.app:app", mock_port, env)
+    try:
+        assert _wait_ready(mock_port)
+        run_id = "run-cancel-5xx-once"
+        request = _seed_running(dbpath, mock_port, run_id)
+        _mock_start_direct(mock_port, request, fault="never_terminal", cancel_fault="http_500", forced="success")
+        wb = _start("workbench.app:app", wb_port, env)
+        assert _wait_ready(wb_port)
+        _poll(wb_port, run_id, lambda v: v["run_state"] == "running", timeout=10)
+
+        r = _cancel(wb_port, run_id)                         # single operator cancel; Gateway 5xx
+        assert r["attempt"] == "unknown" and r["delivery"] == "unknown"   # uncertainty preserved
+        # The decisive assertion: the mock received the cancel exactly once (no auto-retry).
+        assert _mock_info(mock_port)["cancels"].get(run_id, 0) == 1
+        # And the operator can still act: the run is non-terminal, Cancel remains available.
+        assert _api(wb_port, run_id)["run_state"] == "running"
+        assert _cancel_button_present(wb_port, run_id)
+        _stop(wb)
+    finally:
+        _stop(mock)

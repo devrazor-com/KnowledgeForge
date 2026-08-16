@@ -161,11 +161,17 @@ def _remaining(deadline: datetime | None) -> float:
     return (deadline - _now()).total_seconds()
 
 
-async def _gw_call(fn: Callable, deadline: datetime | None, *args) -> tuple[int, Any]:
+async def _gw_call(fn: Callable, deadline: datetime | None, *args, retry_5xx: bool = True) -> tuple[int, Any]:
     """Call a Gateway operation bounded by the run deadline. Each call's timeout is
-    min(GATEWAY_HTTP_TIMEOUT, remaining); a transient 5xx is retried only if a retry
-    would still fit before the deadline. Raises GatewayError on transport failure
-    or when no budget remains."""
+    min(GATEWAY_HTTP_TIMEOUT, remaining). A transient 5xx is retried only if a retry
+    would still fit before the deadline AND `retry_5xx` is set. Raises GatewayError on
+    transport failure or when no budget remains.
+
+    `retry_5xx` defaults to True (start/events/result rely on retrying a transient 5xx).
+    `cancel` passes retry_5xx=False: a repeated cancel is contractually undefined, and a
+    5xx does not establish whether the first cancel was acted upon, so Module 1 sends
+    exactly ONE physical cancel and records the uncertainty as 'unknown' rather than
+    silently re-issuing an undefined repeat call."""
     status, body = 0, None
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         remaining = _remaining(deadline)
@@ -173,7 +179,7 @@ async def _gw_call(fn: Callable, deadline: datetime | None, *args) -> tuple[int,
             raise gateway_client.GatewayError("run deadline reached before the call")
         call_timeout = min(config.gateway_http_timeout(), remaining)
         status, body = await asyncio.to_thread(fn, *args, timeout=call_timeout)
-        if status >= 500 and attempt < RETRY_ATTEMPTS:
+        if status >= 500 and retry_5xx and attempt < RETRY_ATTEMPTS:
             if _remaining(deadline) <= RETRY_DELAY:   # no budget to retry within the deadline
                 return status, body
             await asyncio.sleep(RETRY_DELAY)
@@ -368,7 +374,9 @@ async def request_cancel(run_id: str) -> dict:
                                     if attempt_state != persisted else None)}
 
     try:
-        status, _body = await _gw_call(gateway_client.cancel, _deadline(run), run_id)
+        # Exactly ONE physical cancel: repeated cancel is contractually undefined and a
+        # 5xx does not prove the first was ignored, so we do not auto-retry (retry_5xx=False).
+        status, _body = await _gw_call(gateway_client.cancel, _deadline(run), run_id, retry_5xx=False)
     except gateway_client.GatewayError as e:
         if e.reason in gateway_client.NON_DELIVERY_REASONS:   # provably never reached M3
             return _resp("undelivered")

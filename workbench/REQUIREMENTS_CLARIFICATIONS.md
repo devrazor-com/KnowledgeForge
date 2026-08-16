@@ -395,6 +395,23 @@ The dev mock happens to treat repeated cancel safely, but that is **mock-only**,
 not contract evidence. Question for the Gateway owner / a future additive
 contract version: define repeated-`cancel` semantics (ideally idempotent).
 
+**Live cancel is also single-shot on a 5xx (post-v1.0 fix, settled independently of
+the Gateway owner).** The shared Gateway-call wrapper `_gw_call` retries a transient
+5xx up to `RETRY_ATTEMPTS` — correct for `start`/`events`/`result`, whose reads are
+safe to repeat. It was previously applied to `cancel` too, so a 5xx on cancel could
+transmit up to three physical cancel requests — an *automatic* repeated cancel, exactly
+what the paragraph above says Module 1 must not do. The operator cancel path now passes
+`retry_5xx=False`, so **a 5xx yields exactly one physical cancel request**. The rationale:
+*a 5xx does not establish whether the first cancel was acted upon, so Module 1 records
+cancellation delivery as `unknown` and exposes that uncertainty rather than making an
+undefined repeated cancel call on the operator's behalf; the operator, seeing that
+evidence, decides whether another cancellation attempt is appropriate.* The existing UX
+is unchanged: `unknown` stays visually/textually distinct from `acknowledged`, the
+uncertainty is shown, and manual Cancel-again remains available while the run is
+non-terminal. `start`/`events`/`result`/cleanup retry behaviour is untouched. A
+mechanism test (`test_cancel_5xx_sends_exactly_one_physical_request`) asserts the mock
+received the cancel exactly once, not merely that the state is `unknown`.
+
 ## Artifact CONTENT is not carried by the frozen contract (Step 3C-2) — question for the Gateway owner
 
 The `ValidationResult` carries artifact **names** (`diff.patch`, `test.log`,
