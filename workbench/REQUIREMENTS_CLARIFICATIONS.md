@@ -198,6 +198,55 @@ and is deliberately not used. The launcher makes the safe loop automatic on Wind
 serve on `_WindowsSelectorEventLoop`. Module 1 uses no asyncio subprocesses,
 `add_reader` on non-sockets, or other Proactor-only features, so it is Selector-compatible.
 
+## Windows acceptance of candidate dc56c26 — PASS (post-v1.0, recorded)
+
+The Selector mitigation, the Python 3.12 lock baseline, and active-run restart/recovery
+were accepted on a real Windows work machine against the mock Gateway, from a fresh
+lock-installed environment (candidate commit `dc56c26`, archive verified by SHA-256
+before extraction; provenance `commit=dc56c26 origin_main=8319bda v1.0-module1=a5c0bd7`).
+
+- **Phase A — PASS.** Fresh Python 3.12.6 venv installed from `workbench/requirements.lock`:
+  28 lock entries, 28 installed, zero missing / zero extra, `colorama==0.4.6` present via
+  the `sys_platform == "win32"` marker.
+- **Phase C — PASS.** Real Workbench launched with `python -m workbench.run_workbench`;
+  startup logged `[workbench] serving on event loop: _WindowsSelectorEventLoop`. Larkspur
+  registered from a Windows path; package fingerprint `sha256:ab62f181…` and LARK-TASK-001
+  `sha256:16ad18f5…` matched the recorded values in full. A forced-success run reached
+  PASSED (rule #6) with all 8 events individually validated and the ValidationResult
+  validated; a cancelled run rendered `cancel_delivery=acknowledged` on both the run
+  screen and history and reached CANCELLED (rule #1). History/evidence correct; Ctrl-C
+  shut down cleanly.
+- **Phase D — PASS (deterministic active-run restart/recovery).** With
+  `MOCK_EVENT_DELAY_SECONDS=15`, a forced-success run was interrupted after event 2 (only
+  sequences 1–2 persisted), the Workbench stopped and restarted (Selector reconfirmed),
+  and the run allowed to complete. Evidence: mock `starts[run_id] == 1` (reattached, not
+  replaced — recovery reused the client-supplied `run_id` and never re-called start); the
+  persisted event list was exactly `[(1,accepted),(2,started),(3,progress),(4,tool_call),
+  (5,tool_call),(6,check),(7,check),(8,completed)]` — eight contiguous rows, no duplicates,
+  no gaps; final verdict PASSED (rule #6). **Why this is strong evidence, not merely a
+  green UI:** recovery resumes from the persisted `last_sequence`, checks each resumed
+  event against `expected = max_seq + 1`, and would have terminated the run as
+  `protocol_error` *before* persisting any mis-sequenced event (the `run_event` PRIMARY
+  KEY on `(run_id, sequence)` is a second guard). A mis-sequenced recovery therefore could
+  not have produced a PASSED run — so the PASSED run with eight contiguous rows proves the
+  durable evidence was reconstructed correctly, not just that the UI reached PASSED. This
+  closes the 2026-08-14 inconclusive recovery test (which finished before the Workbench
+  could be stopped); the `MOCK_EVENT_DELAY_SECONDS` knob made it deterministic.
+
+The Selector loop was confirmed on four independent Workbench process starts and never
+fell back to Proactor. Two operational notes: (1) Ctrl-C on the real Workbench may briefly
+print `Waiting for connections to close` while a browser SSE stream is open, then times
+out and exits cleanly on its own — no second Ctrl-C or tab-closing needed; (2) the real
+Workbench under `run_workbench` does NOT inherit the Ctrl-C shutdown hang seen in the three
+throwaway manual-loop A/B diagnostic servers (those drove `loop.run_until_complete`
+directly; `run_workbench` keeps uvicorn's `Server.run()` lifecycle).
+
+This acceptance attaches to the tree actually executed, `dc56c26`. It certifies the
+Selector mitigation's product-level behaviour and the lock baseline; it does not exercise
+Sadia's Gateway (Module 1 has no non-mutating Gateway op — its first real call is
+necessarily `POST /runs`), and the full Windows pytest suite gate for the harness commit
+remains separate and open.
+
 ## Transport classification is structural and evidence-bounded; timeout ≠ non-delivery (post-v1.0, settled — Windows evidence)
 
 `gateway_client._classify` categorises a transport failure from the **exception
