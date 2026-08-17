@@ -247,6 +247,30 @@ Sadia's Gateway (Module 1 has no non-mutating Gateway op — its first real call
 necessarily `POST /runs`), and the full Windows pytest suite gate for the harness commit
 remains separate and open.
 
+## Windows harness acceptance of candidate 86243b8 — PASS (post-v1.0, recorded)
+
+The full Windows pytest suite gate for the test harness is now closed on a real Windows
+machine (Python 3.12.6), from a fresh lock-installed environment on candidate `86243b8`:
+
+- **Full suite: 172 passed, 4 skipped, 0 failed** (176 collected).
+- **Mechanism proof PASSED:** `test_windows_harness_child_serves_on_selector_loop` — a
+  Workbench child launched through the same `_regutil.start_server` the whole harness uses
+  positively reported serving on `_WindowsSelectorEventLoop` (adoption by the real launch
+  path, not mere factory construction). So the harness child servers are verified to run
+  under the accepted Selector-loop mitigation, and the three historical WinError-64
+  readiness failures are resolved by launching them on Selector.
+- **Deterministic classifier test PASSED on Windows:**
+  `test_sticky_acknowledged_not_downgraded_by_failed_retry` now fails the later cancel via
+  the mock's `cancel_fault="http_500"` (a controlled 5xx → `unknown`), so the earlier
+  OS-dependent closed-port premise (refuse vs. timeout) is gone without weakening the
+  assertion (it still asserts `attempt=='unknown'`, sticky `acknowledged` preserved,
+  exactly one physical cancel).
+- **The four skips are legitimate platform constraints, not portability defects:**
+  two SIGSTOP/SIGCONT tests (`test_cancel_delivery_http.py`, `test_recovery_http.py`) are
+  POSIX-only job-control; two symlink tests (`test_portability.py`,
+  `test_root_identity_http.py`) skip because **symlink creation was not permitted in this
+  Windows configuration** — a Windows permission/policy constraint, not a Module 1 defect.
+
 ## Transport classification is structural and evidence-bounded; timeout ≠ non-delivery (post-v1.0, settled — Windows evidence)
 
 `gateway_client._classify` categorises a transport failure from the **exception
