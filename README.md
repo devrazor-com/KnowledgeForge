@@ -70,35 +70,35 @@ on another host is one environment variable — e.g. `https://gateway.internal:8
 (DNS, firewall/proxy egress, VPN and — for an internal-CA HTTPS Gateway — trusting that
 CA in the OS trust store are network-environment concerns, not application settings.)
 
+**Start Module 1 the same way on every platform: `python -m workbench.run_workbench`.**
+It selects the asyncio Selector event loop internally (on Windows this avoids the default
+Proactor loop's accept-loop failure — see `workbench/REQUIREMENTS_CLARIFICATIONS.md`,
+"Windows event loop"; on macOS/Linux it is the loop uvicorn already uses). Startup prints
+`[workbench] serving on event loop: <module>.<class>` — a selector loop
+(`…_UnixSelectorEventLoop` on macOS/Linux, `…_WindowsSelectorEventLoop` on Windows).
+
 ### macOS / Linux
 
 ```bash
 python3.12 -m venv workbench/.venv
 ./workbench/.venv/bin/pip install -r workbench/requirements.txt   # or requirements.lock for the exact pinned closure
 export MOD3_BASE_URL=http://127.0.0.1:8003        # or the real Gateway URL
-./workbench/.venv/bin/uvicorn workbench.app:app --port 8010
+./workbench/.venv/bin/python -m workbench.run_workbench
 # tests:
 ./workbench/.venv/bin/python -m pytest workbench/tests -q
 ```
 
 ### Windows
 
-The Workbench runs natively on Windows. The differences are the venv layout (`Scripts\`
-instead of `bin/`), how environment variables are set, and — importantly — **how you
-start it**. On Windows, start Module 1 with the launcher **`python -m
-workbench.run_workbench`**, not a bare `uvicorn` command. The launcher selects a
-Selector event loop; the default Proactor loop can be left alive-but-unable-to-accept by
-an aborted incoming connection (see `workbench/REQUIREMENTS_CLARIFICATIONS.md`, "Windows
-event loop"). Startup prints `[workbench] serving on event loop: _WindowsSelectorEventLoop`
-— confirm that line. (`run_workbench` works on every OS; off Windows it uses the default
-loop.)
+The only differences on Windows are the venv layout (`Scripts\` instead of `bin/`) and
+how environment variables are set — the launch command is the same.
 
 **PowerShell**
 ```powershell
 py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt   # or requirements.lock
 $env:MOD3_BASE_URL = "http://127.0.0.1:8003"      # or the real Gateway URL
-workbench\.venv\Scripts\python -m workbench.run_workbench          # protected Windows launch (Selector loop)
+workbench\.venv\Scripts\python -m workbench.run_workbench
 # tests:
 workbench\.venv\Scripts\python -m pytest workbench\tests -q
 ```

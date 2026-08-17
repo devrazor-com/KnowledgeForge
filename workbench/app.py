@@ -37,10 +37,14 @@ templates = Jinja2Templates(directory=str(config.BASE_DIR / "templates"))
 
 @app.on_event("startup")
 async def _startup() -> None:
-    # Report the actual serving event loop. On Windows the Selector loop is Module 1's
-    # mitigation for the Proactor accept-loop failure (see workbench/winloop.py); this
-    # line is how a Windows launch is verified to be serving on _WindowsSelectorEventLoop.
-    print(f"[workbench] serving on event loop: {type(asyncio.get_running_loop()).__name__}", flush=True)
+    # Report the actual serving event loop as <module>.<class> (e.g.
+    # asyncio.unix_events._UnixSelectorEventLoop on macOS/Linux,
+    # asyncio.windows_events._WindowsSelectorEventLoop on Windows). Module 1 selects the
+    # Selector loop on every platform (see workbench/eventloop.py); this line is how a
+    # launch is verified to be serving on that loop, and the fully-qualified name lets a
+    # reader resolve the exact runtime class.
+    _loop_cls = type(asyncio.get_running_loop())
+    print(f"[workbench] serving on event loop: {_loop_cls.__module__}.{_loop_cls.__name__}", flush=True)
     db.init()
     # Reconcile any non-terminal local attempts left by a previous process. Runs as
     # a background task so startup is never blocked. (The registry is NOT auto-

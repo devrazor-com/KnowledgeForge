@@ -145,11 +145,11 @@ the Workbench before zipping.)
    ```powershell
    workbench\.venv\Scripts\python -m pytest workbench\tests -q
    ```
-6. **Start the Workbench** (protected Windows launch — Selector event loop):
+6. **Start the Workbench** (the same launch command on every platform):
    `workbench\.venv\Scripts\python -m workbench.run_workbench`
-   Confirm the startup line `[workbench] serving on event loop: _WindowsSelectorEventLoop`.
-   (Do **not** start it with a bare `uvicorn` command on Windows — that uses the Proactor
-   loop, which an aborted incoming connection can leave alive-but-unable-to-accept.)
+   Confirm the startup line `[workbench] serving on event loop: …_WindowsSelectorEventLoop`
+   (a selector loop; on macOS/Linux it is `…_UnixSelectorEventLoop`). The launcher selects
+   the Selector loop internally — on Windows this avoids the Proactor accept-loop failure.
 7. **Register packages** (clean start): open `http://127.0.0.1:8010/`, register each
    package root by its Windows path, and configure each profile. *(If instead you
    preserved the Mac DB, use **Change root** on each Unhealthy package instead of

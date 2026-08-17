@@ -188,14 +188,21 @@ registers its listener once via `_add_reader` and keeps it across per-accept err
 the resource-exhaustion path removes and re-schedules it), so it is not exposed to this.
 
 **Mitigation (launcher/config boundary; no request-behaviour change):** start Module 1
-with `python -m workbench.run_workbench`, which on Windows selects the Selector loop
-through uvicorn's own custom loop-factory (`workbench.winloop:selector_loop_factory`).
-uvicorn's `Server.run()` still owns the `asyncio.Runner` and shutdown lifecycle — the
-manually-driven `loop.run_until_complete(server.serve())` pattern regressed clean Ctrl-C
-and is deliberately not used. The launcher makes the safe loop automatic on Windows (no
-`--loop` flag to forget) and is a no-op elsewhere. App startup logs the live loop
-(`[workbench] serving on event loop: …`) so a Windows launch is positively confirmed to
-serve on `_WindowsSelectorEventLoop`. Module 1 uses no asyncio subprocesses,
+with `python -m workbench.run_workbench` — the one documented launch on every platform —
+which selects the Selector loop through uvicorn's own custom loop-factory
+(`workbench.eventloop:selector_loop_factory`). uvicorn's `Server.run()` still owns the
+`asyncio.Runner` and shutdown lifecycle — the manually-driven
+`loop.run_until_complete(server.serve())` pattern regressed clean Ctrl-C and is
+deliberately not used. **This is one branchless cross-platform choice, not a Windows
+workaround hidden behind a flag:** on macOS/Linux the selector loop is what uvicorn
+already uses (uvloop is absent), and on Windows it is this mitigation; selecting it
+explicitly everywhere gives a single launch path and lets the loop-selection be verified
+on any OS. The HTTP test harness (`_regutil.start_server`) selects the same factory the
+same way, also without a platform branch. App startup logs the live loop as
+`<module>.<class>` (e.g. `asyncio.unix_events._UnixSelectorEventLoop` on macOS,
+`asyncio.windows_events._WindowsSelectorEventLoop` on Windows), so any launch is positively
+confirmed to serve on a selector loop and a reader can resolve the exact runtime class.
+Module 1 uses no asyncio subprocesses,
 `add_reader` on non-sockets, or other Proactor-only features, so it is Selector-compatible.
 
 ## Windows acceptance of candidate dc56c26 — PASS (post-v1.0, recorded)
