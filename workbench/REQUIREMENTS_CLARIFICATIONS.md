@@ -278,6 +278,93 @@ machine (Python 3.12.6), from a fresh lock-installed environment on candidate `8
   `test_root_identity_http.py`) skip because **symlink creation was not permitted in this
   Windows configuration** — a Windows permission/policy constraint, not a Module 1 defect.
 
+## Cross-platform acceptance of candidate af8bb8f — PASS on macOS and Windows (post-v1.0, recorded)
+
+The unified, branchless Selector event-loop architecture (one codebase, one launch command
+`python -m workbench.run_workbench`, one explicit Selector loop; `winloop`→`eventloop`) was
+accepted on both macOS and Windows for candidate `af8bb8f`. This is portability acceptance
+only — it does not close any product/Gateway item. Evidence is recorded in two classes:
+**artifact-backed** (contained in a hashed file captured during the Windows run) and
+**transcribed console** (directly observed and written into the Windows acceptance report,
+not into a hashed file). The distinction is preserved below.
+
+**macOS acceptance (candidate af8bb8f).** Full suite 175 collected, 175 passed, 0 skipped,
+0 failed; live serving loop `asyncio.unix_events._UnixSelectorEventLoop`; the platform-
+neutral structural mechanism test passed; `python -m workbench.run_workbench` started and
+shut down cleanly. (Observed on the Mac dev machine.)
+
+**Windows acceptance (same candidate af8bb8f, Python 3.12.6, fresh venv from
+`requirements.lock`).**
+- *Gate A — locked env.* Interpreter Python 3.12.6 (**artifact-backed**, `win_pytest.txt`
+  session header); installed package list (**artifact-backed**, `win_freeze.txt`). The
+  normalized comparison `lock 28 / installed 28 / missing [] / extra []` and
+  `colorama==0.4.6` present via the `sys_platform=="win32"` marker are **transcribed
+  console** observations, not hashed-file content.
+- *Gate B — full suite.* 175 collected, **171 passed, 4 skipped, 0 failed**, runtime
+  362.72s (**artifact-backed**, `win_pytest.txt`). The structural Selector mechanism test
+  `test_harness_selector_loop.py::test_harness_child_serves_on_selector_loop` PASSED. The
+  four skips (file:line + reason are in the captured `-ra` output; the **test-function
+  names below were verified from source**, as they were not in the `-ra` summary):
+  `test_cancel_delivery_http.py:249` `test_unknown_delivery_on_timeout` and
+  `test_recovery_http.py:357` `test_recover_gateway_unreachable_then_reachable` — both
+  `@_needs_job_control`, SIGSTOP/SIGCONT POSIX-only; `test_portability.py:105`
+  `test_same_physical_dir_sees_through_symlinks` and `test_root_identity_http.py:122`
+  `test_add_via_symlink_opens_existing_registration` — symlink creation not permitted in
+  this Windows configuration (a permission/policy constraint, not a defect).
+- *Gate C — real Workbench.* Launched with `python -m workbench.run_workbench` (the same
+  command documented for Mac); startup reported live loop
+  `asyncio.windows_events._WindowsSelectorEventLoop`; `/help` returned 200; one Ctrl-C shut
+  down cleanly. (Live-loop line, `/help` result and shutdown are **transcribed console**
+  observations.)
+- *Gate D1 — supported Selector launcher under abortive-connect stress.* **Artifact-backed**
+  (`d1_stress.txt`): 10,000 successful abortive connects over 20 batches × 500, with every
+  recorded error class at zero (10048=0, 10055=0, 10061=0, timeout=0, other=0) and every
+  post-batch `/help` PASS. **Transcribed console**: the same PID stayed LISTENING; exactly
+  21 `/help 200` server log lines; **no** `Accept failed on a socket`, **no** WinError 64,
+  **no** traceback; Ctrl-C then shut down cleanly.
+- *Gate D2 — deliberate Proactor negative control (NOT a supported launch path).* Started
+  with bare `python -m uvicorn workbench.app:app --port 8010` as a diagnostic control only.
+  **Artifact-backed** (`d2_stress.txt`): PRE-BURST `/help` passed; the listener stopped
+  accepting after **124** successful abortive connects; 25 consecutive further connects
+  failed; all three confirmation `/help` GETs returned `WSAECONNREFUSED 10061`.
+  **Transcribed console**: startup reported `asyncio.windows_events.ProactorEventLoop`;
+  `Task exception was never retrieved`; `OSError [WinError 64]`; the failure occurred in
+  `finish_accept` at `windows_events.py:555` on `ov.getresult()` and surfaced as
+  `Accept failed on a socket` at `proactor_events.py:846`; the process remained alive;
+  port 8010 had no LISTENING entry; `curl` returned `000` at `time_total 2.047987s`.
+
+**Unplanned confirmation (transcribed console):** the `app.py` startup diagnostic also
+printed under bare `python -m uvicorn workbench.app:app` with no `run_workbench` involved —
+so the startup line is emitted by the application and reports the loop it is *actually*
+serving on, not the launcher's intended configuration. Every Selector line in Gates C/D1 is
+therefore live-loop evidence.
+
+**Deviations from the written Windows procedure** (recorded so the record does not imply
+literal compliance): (1) Gate B used a plain redirect `> win_pytest.txt 2>&1` instead of the
+PowerShell `Tee-Object` pipeline — capture method only, no effect on execution/result;
+(2) `-ra` was added so skip reasons appear in the summary — reporting only; (3) the
+between-arm `TIME_WAIT ≈ 16` target was **not met and not used** — persistent corporate/
+background traffic held TIME_WAIT at ~90–122 all session, so a **substituted** criterion was
+used (D1 PID gone; no `:8010` LISTENING; D1/D2 started from similar counts, 90 and 105; the
+count stayed within the session band rather than climbing; the 10,000 SO_LINGER/RST closes
+bypass TIME_WAIT and moved the total by ~11). This was a substitution, **not** a satisfied
+original criterion.
+
+**Evidence hashes (SHA-256, as reported in the Windows acceptance report; not recomputed
+here):** `ACCEPTANCE_BUILD.txt`
+`b409cf7bcc87a00c9ce30d83d60654cbe5aadc1050b57e2c7d86ee75a48066d0`; `win_freeze.txt`
+`9fd0d6352d4beda769c943178dc7eaaa2551fd7f50cd5eb131fadd3ead3a33a0`; `win_pytest.txt`
+`16d5a3b7b6522971bf10577ba4283dff31757f2d4acf45f28039e57b4a074cda`; `d1_stress.txt`
+`804d5fb3fe1e83bfe5f401093cf29fa2bbb51ed33e2d6b6bfd0242b2326c877f`; `d2_stress.txt`
+`281fb1e3d696e19711ad29441f4768079b6fcee7f665efd75e4b9d3b700dfb27`.
+
+**Conclusion (narrow):** `af8bb8f` is accepted on macOS and Windows. Module 1 now uses one
+codebase, one documented launch command, and one explicit Selector event-loop architecture
+on both platforms. Under the controlled Windows A/B, the supported Selector launcher
+survived 10,000 abortive connects **with no accept error at all** while the deliberately
+Proactor-based negative control lost its listener after 124 successful abortive connects.
+(Selector did not "recover" from an accept error — Gate D1 observed none.)
+
 ## Transport classification is structural and evidence-bounded; timeout ≠ non-delivery (post-v1.0, settled — Windows evidence)
 
 `gateway_client._classify` categorises a transport failure from the **exception
