@@ -657,3 +657,136 @@ manufacture false `inconclusive` evidence. Early stall detection was therefore
 **dropped from Step 3A** (only the authoritative timeout above remains). Revisit
 **only** if a heartbeat/progress cadence is added in a future additive contract
 version — a conversation with Sadia, not something Module 1 infers on its own.
+
+## Cross-platform acceptance of candidate 5fe415c — PASS on macOS and Windows (configurable Module 3 target environments)
+
+Candidate `5fe415c763f9646a44c0a9cc41aacee2b8938dae` (parent
+`b9338949ee90ebe9195fdaaf9c40ee80f237c44c`) — **deployment-configurable Module 3 target
+environments** (fail-closed; Module 3 owns the accepted logical names, Module 1 presents the
+configured list and sends the selected value verbatim) — was accepted on both macOS and
+Windows. Tag `v1.0-module1` = `a5c0bd7a3132847c6bd49184ef0bf2ba0154271c`, unmoved. This
+record preserves two evidence classes: **artifact-backed** (contained in a hashed file
+captured during the Windows run) and **transcribed HTTP/console** (directly observed and
+written into the Windows acceptance report, not into a hashed file). Gate C observations
+below are **transcribed HTTP/console** observations, **not** hashed artifacts, and must not
+be elevated to artifact-backed evidence.
+
+**macOS acceptance (candidate 5fe415c).** Full suite **190 collected, 190 passed, 0 skipped,
+0 failed**. (Observed on the Mac dev machine.)
+
+**Windows acceptance (same candidate 5fe415c, Python 3.12.6, fresh tree
+`C:\KF_ConfigEnv2\KnowledgeForge`, empty database at start).**
+- *Gate 0 — provenance (artifact-backed).* Archive `kf_configurable_environments_5fe415c.zip`
+  decoded to 270,391 bytes and matched SHA-256
+  `bf59d7c0dc1b67559e099fec704db7dcb36e82c5be575484c45cab0d26efe5af`; `ACCEPTANCE_BUILD.txt`
+  recorded `commit=5fe415c…`, `origin_main=b9338949…`, `v1.0-module1=a5c0bd7…`,
+  `created=2026-08-19T14:21:29Z`. Both templates confirmed to carry the placeholder guarded
+  by `{% if not env_current %}`.
+- *Gate A — locked env.* Python 3.12.6; `lock 28 / installed 28 / missing [] / extra []`;
+  `colorama==0.4.6` via the `sys_platform=="win32"` marker. Fourth independent tree
+  reproducing the lock exactly. Interpreter/freeze **artifact-backed** (`win_pytest.txt`
+  header, `win_freeze.txt`); the normalized comparison is **transcribed console**.
+- *Gate B — full suite (artifact-backed, `win_pytest.txt`).* `pytest workbench\tests -v -ra`
+  → **190 collected, 186 passed, 4 skipped, 0 failed**, elapsed **373.77s**. All 13
+  `test_environments_*` tests ran and passed (none skipped), including the four new
+  render-state tests; both `unaffected_by_environment_removal` regressions passed. The four
+  skips (file:line + reason from the captured output):
+  - `test_cancel_delivery_http.py:249` — SIGSTOP/SIGCONT POSIX-only;
+  - `test_recovery_http.py:357` — SIGSTOP/SIGCONT POSIX-only;
+  - `test_portability.py:105` — symlink creation not permitted;
+  - `test_root_identity_http.py:122` — symlink creation not permitted.
+- *Gate C1 — Windows-native file behaviour (transcribed HTTP/console).* Config file at
+  `C:\KF Acceptance Config\environments.txt` (an absolute path containing a space): 58 bytes,
+  `EF BB BF` BOM, 3 CR, one full-line comment, `webplus` padded three spaces each side.
+  Rendered through the UI as `ifastbase, webplus, idr` — file order preserved, BOM stripped,
+  padding removed, comment dropped, internal characters untouched. A live edit was reflected
+  without restarting the process.
+- *Gate C4 — history vs future eligibility (transcribed HTTP/console); both halves PASS.*
+  Rebuilt from scratch: registered `larkspur-475f97`, profile `webplus`, run
+  `run-20260819-195605-06f202`; then `webplus` removed from the file with the process still
+  running. **Historical readability:** the run retained `target_environment: webplus`, badged
+  current, `gateway_unreachable → inconclusive` unchanged; the stored profile still displayed
+  `webplus` with its `Configured … · by VB` stamp even with configuration entirely absent.
+  **Future selection:** placeholder led both forms; a crafted empty POST was rejected; no
+  second run was created. This is the exact `843bca7` failure, now absent.
+- *All four environment render states observed live (transcribed HTTP/console).*
+  - State 1 — stored env still configured: `<option value="webplus" selected>` on both forms,
+    no placeholder. **This is the negative control** — a stored environment that remains
+    configured stays selected without forcing unnecessary reselection; the fix does not
+    over-apply.
+  - State 2 — stored env no longer configured: the placeholder leads both forms; `webplus`
+    is absent from both dropdowns; warnings name it. Correctly forces explicit selection.
+  - State 3 — no profile yet: the placeholder leads; no configured option selected. Correctly
+    forces explicit selection before the first profile environment is chosen. (This is the
+    case that silently offered `ifastbase` under `843bca7`.)
+  - State 4 — config error: the message replaces the dropdown; no `<option>` elements at all.
+  Obsolete environment names remain visible as historical/context information but are **not**
+  offered as selectable choices.
+- *Rejection paths (transcribed HTTP/console).* Empty `environment=` POST to
+  `/packages/{id}/profile` → **422**; empty `environment=` POST to `/runs` → **422** (FastAPI
+  form validation, before route logic — no state written; profile untouched, history stayed
+  at exactly one run). A present-but-unconfigured `environment=webplus` POST to `/runs` →
+  **400** (the `not in allowed` check in `start_run`), no run written. Both codes are
+  load-bearing: 422 stops the empty field, 400 stops a plausible-but-unconfigured name.
+- *Gate C3 — fail-closed states (transcribed HTTP/console).* Four states, four distinct
+  actionable messages, all fail-closed, no dropdown rendered, no synthetic fallback, no
+  filesystem paths or OS errors in the browser: **unset** (names `WORKBENCH_ENVIRONMENTS_FILE`
+  and the file format), **missing file**, **no names**, **duplicate** —
+  `duplicate entry 'idr' (line 5; first seen at line 3)`, physical file lines, against a file
+  whose comment/blank prefix would have made a filtered index read 2 and 0.
+- *Gate C5 — safety boundary vs network failure (transcribed HTTP/console).*
+  `MOD3_BASE_URL=http://127.0.0.1:8099` (deliberately not 8003). Unconfigured (`webplus`):
+  **400**, no run row, history unchanged. Configured (`ifastbase`): **303**, run
+  `run-20260819-200956-651f8f` created, reached the network boundary, failed with
+  "Module 3 could not be reached at http://127.0.0.1:8099". Same route, same profile, seconds
+  apart — the difference is the gate, not the network.
+- *Gate C6 — local vs disposable configuration (transcribed HTTP/console).* Convention
+  documented as `workbench/local/environments.txt` in README, `environments.example.txt`, and
+  `VERIFY.md`; `.gitignore` anchors `/local/` and `/data/` separately with comments;
+  `workbench\local\` does not ship in the archive (the operator creates it, as VERIFY
+  instructs).
+- *Gate C2 — relative path (transcribed HTTP/console); PASS, narrowed.* A relative
+  `WORKBENCH_ENVIRONMENTS_FILE` works, resolving against the **process working directory**.
+  The planned alternate-cwd negative test was **invalid** rather than failed:
+  `python -m workbench.run_workbench` raises `ModuleNotFoundError` from any other directory,
+  so the supported launcher inherently requires the repo root as its working directory and the
+  cwd-dependency hazard cannot arise through it. Absolute paths remain the documented
+  convention as **future-proofing**, not as a correction of an observed failure.
+
+**Evidence provenance (SHA-256, copied verbatim from the Windows acceptance report; not
+recomputed here).** Three files were captured and hashed:
+- `ACCEPTANCE_BUILD.txt` `847d526916033132f53b425f20e0f7117cbec983ed714cdfb538fae48c5fb173`;
+- `win_freeze.txt` `9fd0d6352d4beda769c943178dc7eaaa2551fd7f50cd5eb131fadd3ead3a33a0`
+  (identical to the `af8bb8f` acceptance — expected corroboration: `requirements.lock` is
+  untouched by this change set, so the same 28 pins on the same interpreter produce a
+  byte-identical file);
+- `win_pytest.txt` `41d6e8b2e6dd23678cea072de7fb3f1a310f47218502f71220f18d20f2f6f31b`.
+
+All Gate C observations above were **transcribed HTTP/console** output, **not** hashed
+artifacts, and are labelled as such.
+
+**Deviations from the written Windows procedure** (recorded proportionately so the record does
+not imply literal compliance where Document A says otherwise): (1) Gate B used a plain redirect
+with `-ra`, as in prior acceptances (capture/reporting only). (2) Gate C2's planned negative
+test was abandoned as **invalid** (see above), not forced; the narrowed finding replaces it.
+(3) A claimed cosmetic spacing issue in the run page's POST URL was **withdrawn** — it was read
+from `findstr /i` with space-separated patterns, which `findstr` treats as OR, so the matched
+lines may not have matched the assumed pattern; no reliable evidence, cosmetic, no gate
+affected. (4) Clean shutdown of the final server was not captured (the window closed before
+Ctrl-C); not an acceptance criterion for this change set, and several clean shutdowns were
+observed earlier in the session.
+
+**Conclusion.** `5fe415c` is accepted on macOS and Windows. Configurable Module 3 target
+environments is complete on both platforms. The Gate-C4 operator-safety defect that failed
+`843bca7` (both environment `<select required>` widgets manufacturing an unchosen first-option
+value when no valid current environment existed) is fixed by a disabled-selected placeholder in
+both `_profile_form.html` and the run form in `package_detail.html`, and is now covered by
+rendered-HTML regression tests — the class of defect a backend-only assertion could not see.
+
+## MILESTONE — Module 1 product foundation complete (post-5fe415c)
+
+**Module 1 product foundation is complete.** The cross-platform runtime architecture (one
+codebase, one launch command, one explicit Selector event loop) and deployment-configurable
+Module 3 environment selection are accepted on macOS and Windows. Subsequent Module 1 work
+divides into **operator experience** and **contract-required Module 3 integration behaviour**,
+not further foundation development.
