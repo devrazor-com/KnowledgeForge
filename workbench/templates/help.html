@@ -2,73 +2,230 @@
 {% block title %}Help · Validation Workbench{% endblock %}
 {% block breadcrumb %}<div class="crumb"><a href="/">Packages</a> › Help</div>{% endblock %}
 {% block content %}
-  <h1>Validation Workbench — Help</h1>
-  <p class="sub">For a developer or solution architect using KnowledgeForge Module 1 for the first time.</p>
+  <h1>Validation Workbench — Operator Guide</h1>
+  <p class="sub">A complete, self-contained guide for a developer or solution architect operating KnowledgeForge
+     Module 1 — no prior reading of the repository required. Where an authoritative specification already exists
+     it is cross-linked (e.g. <code>workbench/PACKAGE_FORMAT.md</code>) rather than duplicated. Everything here
+     describes behaviour <b>as implemented today</b>.</p>
 
-  <section class="card">
-    <h2>What Module 1 is for</h2>
-    <p class="prose">KnowledgeForge validates whether a business-domain <b>knowledge package</b> is good enough
-       that an engineering agent, given only that package, can carry out real tasks correctly. Module 1 —
-       this Validation Workbench — is the operator's cockpit: it assembles a package, sends validation
-       requests across the Module 2 contract to an execution Gateway (Module 3), records the evidence that
-       comes back, derives a verdict, and lets you review and approve.</p>
+  <section class="card" id="contents">
+    <h2>Contents</h2>
+    <nav class="help-toc">
+      <a href="#what-for"><span class="n">1.</span> What the Validation Workbench is for</a>
+      <a href="#quick-start"><span class="n">2.</span> Quick start</a>
+      <a href="#workflow"><span class="n">3.</span> End-to-end operator workflow</a>
+      <a href="#packages"><span class="n">4.</span> Packages</a>
+      <a href="#profiles"><span class="n">5.</span> Validation profiles</a>
+      <a href="#environments"><span class="n">6.</span> Target environments</a>
+      <a href="#tasks"><span class="n">7.</span> Tasks and acceptance criteria</a>
+      <a href="#starting"><span class="n">8.</span> Starting a run</a>
+      <a href="#monitoring"><span class="n">9.</span> Monitoring a run and events</a>
+      <a href="#results"><span class="n">10.</span> Results, verdicts and effective outcomes</a>
+      <a href="#current-stale"><span class="n">11.</span> Current versus stale evidence</a>
+      <a href="#fingerprints"><span class="n">12.</span> Fingerprints and evidence</a>
+      <a href="#cancellation"><span class="n">13.</span> Cancellation</a>
+      <a href="#recovery"><span class="n">14.</span> Recovery and reattachment</a>
+      <a href="#history"><span class="n">15.</span> History and historical readability</a>
+      <a href="#configuration"><span class="n">16.</span> Configuration and fail-closed states</a>
+      <a href="#troubleshooting"><span class="n">17.</span> Errors and troubleshooting</a>
+      <a href="#authoring"><span class="n">18.</span> Package-authoring best practices</a>
+      <a href="#operator-best-practices"><span class="n">19.</span> Operator best practices</a>
+    </nav>
+  </section>
+
+  <section class="card" id="what-for">
+    <h2>1. What the Validation Workbench is for</h2>
+    <p class="prose">KnowledgeForge validates whether a business-domain <b>knowledge package</b> is good enough that
+       an engineering agent, given only that package, can carry out real tasks correctly. Module 1 — this
+       Validation Workbench — is the operator's cockpit: it assembles a package, sends validation requests across
+       the Module 2 contract to an execution Gateway (Module 3), records the evidence that comes back, derives a
+       verdict, and lets you review and approve. The subject under test is the <b>package</b>, not the model.</p>
     <p class="prose"><b>What a run proves:</b> that, for one task against one exact snapshot of the package's
        knowledge, the declared checks ran and passed (or didn't), as reported by the Gateway and judged by
-       Module 1's own rules. <b>What it does not prove:</b> that the package is correct in general, that
-       untested tasks would pass, or anything about knowledge the task didn't exercise. Module 1 never
-       invents a result and derives the verdict itself — the Gateway never supplies one.</p>
+       Module 1's own rules. <b>What it does not prove:</b> that the package is correct in general, that untested
+       tasks would pass, or anything about knowledge the task didn't exercise. Module 1 never invents a result and
+       derives the verdict itself — the Gateway reports observable facts and never decides the outcome.</p>
   </section>
 
-  <section class="card">
-    <h2>The operator flow</h2>
-    <p class="prose"><b>register package → configure validation profile → run a task → inspect evidence →
-       resolve review if required → approve.</b></p>
+  <section class="card" id="quick-start">
+    <h2>2. Quick start</h2>
+    <ol class="rlist">
+      <li>Point Module 1 at a Gateway with <code>MOD3_BASE_URL</code>, and at your accepted environment list with
+          <code>WORKBENCH_ENVIRONMENTS_FILE</code> (see <a href="#configuration">§16</a>). Exact commands per OS are
+          in the repository <code>README.md</code>.</li>
+      <li>Start the Workbench the same way on every platform: <code>python -m workbench.run_workbench</code>.</li>
+      <li>Open <code>/</code>, <b>register a package</b> by pasting its root folder's absolute path
+          (<a href="#packages">§4</a>).</li>
+      <li>On the package page, <b>configure the validation profile</b> — target environment + permitted
+          capabilities (<a href="#profiles">§5</a>). Until then, runs are blocked.</li>
+      <li><b>Start a run</b> for a task (<a href="#starting">§8</a>) and watch it on the Run screen
+          (<a href="#monitoring">§9</a>).</li>
+      <li><b>Inspect the result and verdict</b> (<a href="#results">§10</a>); if a run is <code>needs_review</code>,
+          a named human records the outcome (<a href="#results">§10</a>).</li>
+      <li><b>Approve</b> when every active task has a current passing run (<a href="#packages">§4</a>).</li>
+    </ol>
+  </section>
+
+  <section class="card" id="workflow">
+    <h2>3. End-to-end operator workflow</h2>
+    <p class="prose"><b>register package → open package → configure profile → select environment → select task →
+       start run → monitor events → inspect result → read verdict &amp; effective outcome → resolve review if
+       required → approve.</b> Alongside the main line: view <b>history</b>, <b>cancel</b> an in-flight run, let
+       <b>restart recovery</b> reattach after a Workbench restart, <b>Change root</b> when a package folder moves,
+       and <b>activate/deactivate</b> tasks.</p>
+    <p class="prose">The workflow legitimately <b>stops</b> at several points, each covered below: an unhealthy
+       package (§4), no configured profile (§5), an unconfigured or no-longer-configured environment (§6, §16),
+       a start rejection or transport error (§17), an operator cancellation (§13), or a <code>needs_review</code>
+       verdict awaiting a human (§10). None of these are failures of Module 1 — they are states it reports
+       faithfully.</p>
+  </section>
+
+  <section class="card" id="packages">
+    <h2>4. Packages</h2>
+    <p class="prose"><b>Packages catalog (<code>/</code>).</b> Register a package with the <b>Package root</b> field —
+       an absolute filesystem path to the folder containing the package's <code>package.yaml</code>. On submit,
+       Module 1 resolves the path and registers it; if you point at a path already registered (even by a different
+       spelling — a case variant, symlink, junction or mapped drive) it simply opens the existing registration
+       rather than creating a duplicate. A path that does not exist or is not a directory is refused with a
+       message. Only <b>one active registration per <code>package_id</code></b> is allowed; a second root
+       declaring an already-registered id is refused (remove the first to move identity). The absolute path is
+       local registration state only — it never affects any fingerprint.</p>
+    <p class="prose">Each catalog row shows a <b>cheap, structural status</b> — it does not assemble or fingerprint
+       the package. The badge is one of: <b>Unhealthy</b> (the root/manifest/entry point cannot be resolved, with
+       the reason), <b>Needs profile</b> (usable but no validation profile yet), <b>Approval recorded</b> (an
+       approval exists — open the package to confirm it is still current), or <b>No approval</b>. <b>remove</b>
+       unregisters the source; it does <b>not</b> delete the source files or any historical validation evidence.</p>
+    <p class="prose"><b>Package detail (<code>/packages/&lt;id&gt;</code>).</b> The <b>Registered package</b> card shows
+       read-only, assembly-derived fields: <b>Package id</b> (durable logical identity), <b>Package root</b>,
+       <b>Entry point</b>, <b>Tasks location</b>, <b>Knowledge files</b> and <b>Tasks</b> counts, and <b>Package
+       health</b>. Health has three tiers: <b>Healthy</b> (assembled cleanly and tasks load), <b>Assembled with N
+       problem(s)</b> (discovery reported broken links or cycles — see <a href="#authoring">§18</a>), and
+       <b>Unhealthy</b> (cannot be assembled at all). An unhealthy package stays visible with its reason so you can
+       fix it; Module 1 never invents missing content.</p>
+    <p class="prose"><b>Change root.</b> Use this to repoint a registration at a new folder — e.g. after moving the
+       package or transferring it to another machine. The new root must be a valid package whose manifest declares
+       the <b>same</b> <code>package_id</code>; Module 1 verifies this and refuses a mismatch, an already-registered
+       path, or a physical duplicate. Only the machine-local location changes: identity, validation profile, run
+       history, immutable snapshots and approvals are all preserved, and because the knowledge bytes are unchanged,
+       nothing becomes stale from the move alone. (Line endings do not matter — fingerprints normalise CRLF/LF.)</p>
+    <p class="prose"><b>Identity axes are kept separate:</b> <code>package_id</code> (which logical package),
+       <code>package_fingerprint</code> (the exact knowledge bytes a run used), and the registered source/root
+       (where the current copy lives). Validation history and approval hang off <code>package_id</code>, never the
+       mutable source — so unregister/re-register or a moved folder never orphans evidence.</p>
+    <p class="prose"><b>Approval.</b> Approval is an explicit operator action — the system never approves
+       automatically. A package is approval-eligible only when every <b>active</b> task has a current, decisive
+       passing run (see <a href="#current-stale">§11</a>); the Approve button is disabled with the specific reason
+       otherwise, and the server re-checks eligibility on submit (it never trusts the page). An approval records
+       who, when, the package fingerprint, and the active task fingerprints plus the profile context. Changing the
+       package, an active task, or the profile does not delete the approval — it makes the approval's <b>current
+       applicability</b> derive as no-longer-current, which the card shows plainly.</p>
+  </section>
+
+  <section class="card" id="profiles">
+    <h2>5. Validation profiles</h2>
+    <p class="prose">The <b>validation profile</b> is the package's canonical validation context: its <b>target
+       environment</b> and its <b>permitted capabilities</b>, plus an optional recorded configurer name. It is
+       deployment policy, not package knowledge, so it lives in Module 1's database and is excluded from every
+       fingerprint. Until a profile is configured the package reads as <b>“profile not configured”</b> and
+       <b>runs are blocked</b> — Module 1 never manufactures a validation context from global defaults
+       (<i>no profile, no run</i>).</p>
+    <p class="prose"><b>Configure / Reconfigure profile</b> writes the target environment, the checked capability
+       set, and the configurer name, and records the update time. These persisted values are what staleness and
+       approval are judged against (<a href="#current-stale">§11</a>). A run may <b>override</b> the environment or
+       capabilities for that one run, but an overriding run does not update the profile and does not qualify as
+       current approval evidence — it stays fully visible in history as an experiment.</p>
+  </section>
+
+  <section class="card" id="environments">
+    <h2>6. Target environments</h2>
+    <p class="prose"><b>Target environments are configuration, not code.</b> Module 3 owns and publishes the
+       accepted logical environment names; Module 1 only presents the list you configure and sends the selected
+       value <b>verbatim</b> (no mapping, normalisation, or discovery, and Module 3 need not be reachable to render
+       the list). You configure the list in a machine-local file — see <a href="#configuration">§16</a>.</p>
+    <p class="prose">The environment selector on the profile form and the start-run form behaves as follows, so an
+       operator can never silently submit an environment they did not choose:</p>
     <ul class="rlist">
-      <li><b>Register</b> a package by pointing the Workbench at its root folder (it needs a
-          <code>package.yaml</code> with a durable <code>package_id</code>, an entry point, and a tasks
-          directory — see <code>workbench/PACKAGE_FORMAT.md</code>).</li>
-      <li><b>Configure the validation profile</b> (target environment + permitted capabilities). Until then
-          the package is <b>“profile not configured”</b> and <b>runs are blocked</b> — Module 1 never
-          manufactures a validation context from global defaults.</li>
-      <li><b>Run</b> a task; the Run screen defaults to the profile. Overriding environment/capabilities is
-          run-only and does not update the profile or qualify as current approval evidence.</li>
-      <li><b>Inspect evidence</b> in the run screen and the package's validation history.</li>
-      <li><b>Resolve review</b> for a <code>needs_review</code> run (a named human records passed/failed).</li>
-      <li><b>Approve</b> when every active task has a latest passing, current run.</li>
+      <li><b>The stored/profile environment is still configured</b> — it is pre-selected. (No unnecessary
+          reselection is forced.)</li>
+      <li><b>The stored environment is no longer configured</b> — a disabled <i>“Select an environment”</i>
+          placeholder is selected, and the obsolete name is <b>not</b> offered in the dropdown. You must pick a
+          currently configured environment before saving or starting.</li>
+      <li><b>No profile has been configured yet</b> — the same placeholder leads; nothing is pre-selected.</li>
+      <li><b>The environment configuration is unset or invalid</b> — a configuration message replaces the dropdown
+          entirely (see §16); no environment can be chosen until it is fixed.</li>
     </ul>
+    <p class="prose">A stored environment that is no longer configured is still shown verbatim as historical/context
+       information (with a <b>no longer configured</b> marker), because historical runs and evidence that used it
+       remain fully readable. It is simply not offered as a new choice. Removing an environment from the configured
+       list governs <b>future</b> selection and new-run eligibility only — it never rewrites, invalidates, strands,
+       or blocks recovery/cancellation of work that already exists.</p>
   </section>
 
-  <section class="card">
-    <h2>Package health, profiles, identity</h2>
-    <p class="prose"><b>Package health:</b> the catalog shows a cheap structural status (root/manifest/entry
-       resolvable); the package detail page assembles fully and reports discovery problems. An unhealthy
-       package stays visible with the reason.</p>
-    <p class="prose"><b>Durable identity:</b> <code>package_id</code> is the logical package (stable across
-       content, name, and root changes); <code>package_fingerprint</code> is the exact knowledge bytes a run
-       used; the registered source/root is just where the current copy lives. History and approval hang off
-       <code>package_id</code>, never the mutable source.</p>
-    <p class="prose"><b>Validation profile:</b> the package's canonical validation context — its target
-       environment and permitted capability set — stored as operator configuration. It is deployment policy,
-       not package knowledge, so it lives in Module 1's database and is excluded from every fingerprint.</p>
+  <section class="card" id="tasks">
+    <h2>7. Tasks and acceptance criteria</h2>
+    <p class="prose">Tasks are JSON files, one per file, in the directory the manifest's <code>tasks:</code> key
+       declares, versioned alongside the package. Each task carries an <code>id</code>, <code>title</code>,
+       <code>description</code>, optional <code>business_area</code>/<code>difficulty</code>/
+       <code>acceptance_criteria</code>, and a <code>checks</code> list. Each task is <b>fingerprinted</b> over its
+       id, description, acceptance criteria and checks — editing any of those changes the task fingerprint and
+       therefore the validation context.</p>
+    <p class="prose"><b>Active / inactive</b> is operator state stored in Module 1's database, not in the task file,
+       and it does <b>not</b> change a task's fingerprint. <b>Only active tasks count toward approval.</b> The tasks
+       table on the package page shows each task's checks count, active state (with an activate/deactivate control),
+       current status (<a href="#current-stale">§11</a>), and fingerprint. Writing good acceptance criteria — each
+       answerable from the package alone — and choosing whether to declare mechanical <code>checks</code> is
+       authoring work; see <a href="#authoring">§18</a>.</p>
   </section>
 
-  <section class="card">
-    <h2>Staleness and the validation context</h2>
-    <p class="prose">A run's <b>validation context</b> is <b>package fingerprint + task fingerprint +
-       canonical permitted capability set + target environment</b>. A run is <b>stale</b> when its
-       execution-time context no longer equals the current one — i.e. the package knowledge changed, the task
-       changed, or the profile's environment or capabilities changed. Capability ordering is canonicalised and
-       never itself causes staleness. Staleness is a <b>current comparison</b>: a historical run is never
-       rewritten and was not “stale at the time”; only its current qualification changes. Stale results are
-       shown distinctly and do not count toward approval.</p>
+  <section class="card" id="starting">
+    <h2>8. Starting a run</h2>
+    <p class="prose">The <b>Start a validation run</b> form appears once the package is healthy, a profile exists,
+       and tasks are present; otherwise it is replaced by a message naming the specific blocker (environment
+       configuration error, no profile, or no tasks). Controls:</p>
+    <ul class="rlist">
+      <li><b>Task</b> — required; every task is a valid current choice.</li>
+      <li><b>Target environment</b> — required; defaults to the profile's environment when it is still configured,
+          otherwise forces an explicit choice (see <a href="#environments">§6</a>).</li>
+      <li><b>Permitted capabilities</b> — preselected from the profile; you may change them for this run.</li>
+    </ul>
+    <p class="prose">Changing the environment or capabilities makes this run an <b>override</b>: run-only, it does
+       not update the profile and will not qualify as current approval evidence. On submit, Module 1 assembles the
+       exact snapshot, builds and validates the outbound request, creates the run, and takes you to the Run screen.
+       If Module 1's own outbound request fails schema validation it is <b>not sent</b> and the run is recorded as
+       <code>request_invalid</code> (<a href="#troubleshooting">§17</a>).</p>
+    <p class="prose muted">A <b>dev/mock-only</b> panel (forced outcome and injected Gateway fault) appears only when
+       <code>WORKBENCH_DEV_MOCK</code> is on. It is explicitly not part of the contract and is hidden in production.</p>
   </section>
 
-  <section class="card">
-    <h2>Outcomes and the six verdict rules</h2>
-    <p class="prose">Module 1 derives the outcome from the Gateway's result using six ordered rules
-       (first match wins). The <b>order matters</b>: a check that <em>ran and failed</em> (rule 4) is real
-       evidence and must beat “some check didn't run” (rule 5); a technical failure (rule 2) must be caught
-       before checks are considered; a cancellation (rule 1) wins over everything.</p>
+  <section class="card" id="monitoring">
+    <h2>9. Monitoring a run and events</h2>
+    <p class="prose">The Run screen streams progress live (server-sent events) and lays the run out as eight stages:
+       <b>Inputs</b>, <b>Module 1 Assembly</b> (package id, execution-time package fingerprint, task fingerprint,
+       and whether this run's context is current or stale), <b>ValidationRequest</b> (with Module 1's outbound
+       validation result and the raw JSON), <b>Module 2 Contract</b> (the <code>start</code> operation), <b>Gateway</b>,
+       <b>ExecutionEvents</b>, <b>ValidationResult</b>, and <b>Module 1 Verdict</b>. Module 1 validates every
+       ExecutionEvent against the contract on receipt and checks the sequence; a gap, duplicate, out-of-order or
+       schema-invalid event ends the run as <code>protocol_error</code> rather than being silently accepted.</p>
+    <p class="prose">The <b>run state</b> badge moves through <code>submitting</code> → <code>running</code> →
+       <code>terminal</code> (a ValidationResult and verdict exist) or <code>error</code> (a Module-1 error state,
+       effective outcome <code>inconclusive</code>). Two banners may appear: an <b>ephemeral recovery</b> note
+       (restart reattachment, <a href="#recovery">§14</a>) and a <b>durable cancellation-delivery</b> note
+       (<a href="#cancellation">§13</a>). When a run ends in error, the downstream stages read <i>“not reached”</i>
+       rather than sitting blank — Module 1 never fabricates a result to fill them.</p>
+  </section>
+
+  <section class="card" id="results">
+    <h2>10. Results, verdicts and effective outcomes</h2>
+    <p class="prose"><b>The ValidationResult</b> (shown when the run is terminal) reports the Gateway's status and
+       summary, per-check results (id, passed/failed, exit code, and any output), any <b>artifact names</b>, and an
+       optional <b>diagnosis</b>. Artifact names (e.g. <code>diff.patch</code>, <code>test.log</code>) are shown as
+       <b>references only</b> — the frozen Module 2 contract does not carry artifact file <em>contents</em>, so
+       Module 1 does not hold them. The diagnosis is Module 3's interpretation, shown separately and marked
+       advisory; it never determines the outcome by itself.</p>
+    <p class="prose"><b>Module 1 derives the verdict</b> from the Gateway's result using six ordered rules, first
+       match wins. The order matters: a cancellation (rule 1) wins over everything; a technical failure (rule 2) is
+       caught before checks are considered; a check that <em>ran and failed</em> (rule 4) is real evidence and beats
+       “some check didn't run” (rule 5).</p>
     <ol class="rlist">
       <li><b>Rule 1 — cancelled:</b> result status <code>cancelled</code> → <code>cancelled</code>.</li>
       <li><b>Rule 2 — technical failure:</b> result status <code>failed</code> → <code>inconclusive</code>.</li>
@@ -81,80 +238,319 @@
     <table class="kv">
       {% for name, desc in outcomes.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
     </table>
-    <p class="prose"><b>Two provenances of <code>inconclusive</code>:</b> (1) Module 3 itself reported a
-       technical failure — a valid ValidationResult with status <code>failed</code> (rule 2); or (2) Module 1
-       could not obtain or validate a usable result at all — the run ends in a Module-1 error state (below)
-       with an <em>effective</em> outcome of inconclusive. Both count neither for nor against the package, and
-       are shown distinctly.</p>
+    <p class="prose"><b>Two provenances of <code>inconclusive</code>:</b> (1) Module 3 itself reported a technical
+       failure — a valid ValidationResult with status <code>failed</code> (rule 2); or (2) Module 1 could not obtain
+       or validate a usable result at all — the run ends in a Module-1 error state (<a href="#troubleshooting">§17</a>)
+       with an <em>effective</em> outcome of inconclusive. Both count neither for nor against the package, and are
+       shown distinctly.</p>
+    <p class="prose"><b>Effective outcome</b> is what history and approval use. Its <b>source</b> is one of:
+       <code>machine</code> (Module 1's own verdict), <code>review</code> (a human resolved a
+       <code>needs_review</code>), or <code>error</code> (an error run → inconclusive). A human resolution is stored
+       <em>alongside</em> the machine verdict, never in place of it, and stays distinguishable.</p>
+    <h3>Human review</h3>
+    <p class="prose"><code>needs_review</code> arises when Module 1 has no decisive machine evidence — a task with no
+       declared checks (rule 3), or a declared check that did not run (rule 5). A <b>named human</b> resolves it to
+       <code>passed</code> or <code>failed</code>, with the time recorded. A run resolved to <code>passed</code> can
+       then count as passing evidence for approval; review can never make a <code>failed</code>,
+       <code>inconclusive</code>, or <code>cancelled</code> run approvable. If the validation context later changes,
+       a resolved run becomes stale and stops counting toward current eligibility, while the resolution remains a
+       historical fact.</p>
   </section>
 
-  <section class="card">
-    <h2>needs_review, review, and approval</h2>
-    <p class="prose"><b>needs_review</b> arises when Module 1 has no decisive machine evidence — a task with no
-       declared checks (rule 3), or a declared check that did not run (rule 5). A <b>named human</b> resolves
-       it to <code>passed</code> or <code>failed</code>, with the time recorded. The human resolution is
-       stored <em>alongside</em> the machine verdict, never replacing it, and stays distinguishable from it. A
-       run resolved to <code>passed</code> can then count as passing evidence for approval; review can never
-       make a <code>failed</code>, <code>inconclusive</code>, or <code>cancelled</code> run approvable. If the
-       validation context later changes, a resolved run becomes stale and stops counting toward current
-       eligibility, while the resolution remains a historical fact.</p>
-    <p class="prose"><b>How approval evidence is selected — current context first.</b> Only runs whose
-       validation context matches the package's <b>current</b> one (current package fingerprint + task
-       fingerprint + capability set + target environment) are approval candidates. Runs under a different
-       context — an environment/capability <b>override</b>, or a superseded package/task/profile — stay
-       fully visible in history and evidence but are <b>not</b> candidates: they neither qualify nor
-       disqualify current evidence. So an experiment run with an override, performed after a valid
-       profile-matching pass, does not revoke that pass.</p>
-    <p class="prose">Among the current-context runs, newest first: <code>inconclusive</code> (a technical
-       failure — the package was never really tested) and <code>cancelled</code> (an abandoned attempt) are
-       <b>skipped</b> (neither qualify nor disqualify), so a transient Gateway outage after a successful
-       validation does not erase an earlier pass. An <b>unresolved</b> <code>needs_review</code>
-       <b>blocks</b> approval (review pending) until a human records the outcome. A resolved
-       <code>needs_review</code> uses the human passed/failed. The first <code>passed</code>/<code>failed</code>
-       is decisive — the task qualifies only if that decisive current run is <code>passed</code>. If a task
-       has no run under the current context, it reads as <b>not yet validated</b> (never run) or
-       <b>re-validation required</b> (validated before, but the context changed).</p>
-    <p class="prose"><b>Approval</b> is an explicit operator action (the system never approves automatically).
-       A package is approval-eligible when every <b>active</b> task's current-context evidence is a decisive
-       pass. Approval records who, when, the package fingerprint, and the active task
-       fingerprints (plus the profile context). Changing the package, an active task, or the profile
-       <b>invalidates the approval's current applicability</b> — the historical approval record is never
-       deleted; its current validity is derived. The Module 3 outcome, Module 1's verdict, the review state,
-       and the approval state are four separate things and are shown as such.</p>
+  <section class="card" id="current-stale">
+    <h2>11. Current versus stale evidence</h2>
+    <p class="prose">A run's <b>validation context</b> is <b>package fingerprint + task fingerprint + canonical
+       permitted capability set + target environment</b>. A run is <b>current</b> when its execution-time context
+       equals the package's current one, and <b>stale</b> when it no longer does — i.e. the package knowledge
+       changed, the task changed, or the profile's environment or capabilities changed. Capability ordering is
+       canonicalised and never itself causes staleness.</p>
+    <p class="prose">Staleness is a <b>current comparison</b>, not a rewrite: a historical run was never “stale at
+       the time” and its evidence is never altered — only its <em>current</em> qualification changes. Stale results,
+       including runs made with an environment/capability <b>override</b>, remain fully visible but do <b>not</b>
+       count toward approval. Approval considers only runs whose context matches the current one; among those,
+       newest-first, <code>inconclusive</code>/<code>cancelled</code> are skipped, an unresolved
+       <code>needs_review</code> blocks, and the first <code>passed</code>/<code>failed</code> decides. A task with
+       no run under the current context reads as <b>not yet validated</b> (never run) or <b>re-validation
+       required</b> (validated before, but the context changed).</p>
   </section>
 
-  <section class="card">
-    <h2>Error kinds</h2>
-    <p class="prose">When no valid ValidationResult is obtained, the run reaches a terminal Module-1 error
-       state (effective outcome <code>inconclusive</code>) with a Module-1-authored error kind:</p>
-    <table class="kv">
-      {% for name, desc in error_kinds.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
-    </table>
+  <section class="card" id="fingerprints">
+    <h2>12. Fingerprints and evidence</h2>
+    <p class="prose">The <b>package (knowledge) fingerprint</b> is a hash over the assembled sequence of
+       (package-relative path, newline-normalised content). It is machine-independent: the same knowledge produces
+       the same value on any OS and under any absolute root, and the manifest and root path are excluded. The
+       <b>task fingerprint</b> is separate, and the <b>validation-context</b> identity combines package fingerprint,
+       task fingerprint, capabilities and environment (<a href="#current-stale">§11</a>). Full specification:
+       <code>workbench/PACKAGE_FORMAT.md</code>.</p>
+    <p class="prose">Every run preserves the ExecutionEvents, the ValidationResult, and the derived verdict as
+       <b>immutable evidence</b>, reachable from the Run screen and history. The Run screen also shows a factual
+       comparison of the run's execution-time snapshot fingerprint against what the currently-registered package
+       assembles to now — so you can see at a glance whether the package has changed since the run.</p>
   </section>
 
-  <section class="card">
-    <h2>Cancellation-delivery states</h2>
-    <p class="prose">Operator cancellation intent is separate from what Module 1 knows about <b>delivering</b>
-       that request to the Gateway:</p>
+  <section class="card" id="cancellation">
+    <h2>13. Cancellation</h2>
+    <p class="prose">Cancelling asks the Gateway to stop the run. Operator <b>intent</b> is recorded immediately and
+       is separate from what Module 1 knows about <b>delivering</b> that request. Module 1 sends exactly <b>one</b>
+       physical cancel per click — a repeated cancel is contractually undefined, and a transient server error does
+       not establish whether the first was acted on — so it never auto-retries. You can click Cancel again while the
+       run is still non-terminal; a failed or rejected attempt never hides or disables the control.</p>
     <table class="kv">
       {% for name, desc in cancel_states.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
     </table>
-    <p class="prose"><b><code>acknowledged</code> does not mean the run is cancelled</b> — it means Module 3
-       acknowledged receiving the cancellation request. The run is only cancelled when the contract
-       <code>cancelled</code> event/result arrives and verdict rule #1 applies.</p>
+    <p class="prose"><b><code>acknowledged</code> does not mean the run is cancelled</b> (acknowledged ≠ cancelled) —
+       it means Module 3 acknowledged receiving the request. The run is only cancelled when the contract <code>cancelled</code>
+       event/result arrives and verdict rule&nbsp;#1 applies. <code>acknowledged</code> is sticky: a later failed
+       retry cannot downgrade the durable fact that an earlier request was acknowledged, though the immediate
+       response still tells you what the latest attempt did.</p>
   </section>
 
-  <section class="card">
-    <h2>Evidence and artifacts</h2>
-    <p class="prose">Every run preserves the ExecutionEvents, the ValidationResult (summary, check results and
-       their output, diagnosis), and the derived verdict, all reachable from the run screen and history.
-       <b>Artifact names</b> reported by Module 3 (e.g. <code>diff.patch</code>, <code>test.log</code>,
-       <code>transcript.log</code>) are shown as <b>references only</b> — the frozen Module 2 contract does not
-       carry artifact file <em>contents</em>, so Module 1 does not hold them.</p>
-    <p class="prose">Diagnosis is presented separately from raw evidence and clearly marked as an
-       interpretation; it never determines the outcome by itself.</p>
-    <p class="prose muted">See also <code>workbench/PACKAGE_FORMAT.md</code> (package format) and
-       <code>workbench/REQUIREMENTS_CLARIFICATIONS.md</code> (settled interpretations and open Gateway-owner
-       questions).</p>
+  <section class="card" id="recovery">
+    <h2>14. Recovery and reattachment</h2>
+    <p class="prose">If the Workbench restarts while runs are in flight, it reconciles them automatically at startup.
+       Recovery <b>observes</b> existing runs by their <code>run_id</code>; it never re-issues <code>start</code> and
+       never re-issues <code>cancel</code>. Cases, as implemented today:</p>
+    <ul class="rlist">
+      <li><b>Interrupted around start (acceptance unknown)</b> → recorded <code>start_unresolved</code>: Module 1
+          cannot tell whether Module 3 created a run, so it will not retry (<a href="#troubleshooting">§17</a>).</li>
+      <li><b>A terminal event was persisted but the result wasn't retrieved</b> → recovery completes the retrieval.</li>
+      <li><b>The run deadline expired while the Workbench was down</b> → recorded <code>timed_out</code>.</li>
+      <li><b>Accepted and still in progress (including a run whose cancellation was already requested)</b> →
+          recovery resumes <b>observing</b>, tolerating a transient unreachable Gateway within the original run
+          deadline and showing an ephemeral “recovering” note. A previously requested cancellation is <b>not</b>
+          reissued — its recorded delivery state stands, and you decide whether to Cancel again.</li>
+    </ul>
+    <p class="prose">The “recovering” note is ephemeral process state, not durable evidence: it clears once the
+       Gateway is reachable again, and is reconstructed by the next reconciliation if the Workbench restarts again.</p>
+  </section>
+
+  <section class="card" id="history">
+    <h2>15. History and historical readability</h2>
+    <p class="prose">A package's <b>validation history</b> is keyed by durable <code>package_id</code> and spans
+       every content version the package has had. Each row is immutable evidence tied to the exact snapshot that run
+       used: run id, task, outcome (verdict + rule, or error kind → inconclusive, or a non-terminal state), run
+       state, environment and capabilities, the snapshot fingerprint, and start time. A cancellation-delivery note
+       appears where relevant.</p>
+    <p class="prose"><b>Historical readability is preserved unconditionally.</b> Changing the package, editing the
+       profile, or removing an environment from the configured list never rewrites, hides, or invalidates existing
+       runs — a run that used a now-removed environment still displays that environment and its recorded outcome.
+       The <b>current</b>/<b>stale</b> badge in history is a current comparison against today's profile
+       (<a href="#current-stale">§11</a>); it changes what currently qualifies, never the recorded facts.</p>
+  </section>
+
+  <section class="card" id="configuration">
+    <h2>16. Configuration and fail-closed states</h2>
+    <p class="prose"><b><code>MOD3_BASE_URL</code></b> points Module 1 at a Module 3 Gateway (default is the dev
+       mock). <b><code>WORKBENCH_ENVIRONMENTS_FILE</code></b> points at a machine-local UTF-8 text file listing the
+       accepted Module 3 environment names, one per line; blank lines and full-line <code>#</code> comments are
+       ignored, surrounding whitespace is trimmed, a byte-order mark and either line ending are tolerated, and a
+       duplicate name is a configuration error. The file is <b>reread on demand</b>, so edits take effect without a
+       restart. Names are used exactly as written — no case-folding or aliasing. The recommended convention is
+       <code>workbench/local/environments.txt</code> (git-ignored, kept separate from the disposable
+       <code>workbench/data/</code>). Copy <code>workbench/environments.example.txt</code> to start.</p>
+    <p class="prose"><b>Fail-closed, with no synthetic fallback.</b> When the environment configuration is missing or
+       invalid, Module 1 shows an actionable message instead of an environment dropdown and blocks new runs, in one
+       of four states: <b>unset</b> (the variable isn't set), <b>unreadable</b> (the file can't be read),
+       <b>empty</b> (no names after ignoring blanks/comments), and <b>duplicate</b> (a name appears twice — the
+       message cites the physical file line numbers). Fixing the file and reloading clears the state. Configuration
+       never rewrites or strands existing work — it governs future selection and new-run eligibility only.</p>
+  </section>
+
+  <section class="card" id="troubleshooting">
+    <h2>17. Errors and troubleshooting</h2>
+    <p class="prose">When no valid ValidationResult is obtained, the run reaches a terminal Module-1 error state
+       (effective outcome <code>inconclusive</code>) with a Module-1-authored <b>error kind</b>:</p>
+    <table class="kv">
+      {% for name, desc in error_kinds.items() %}<tr><td><code>{{ name }}</code></td><td>{{ desc }}</td></tr>{% endfor %}
+    </table>
+    <p class="prose">Each error and unusual state below is described as: <b>What happened?</b> → <b>What does
+       Module 1 know?</b> → <b>What should I do?</b> → <b>What should I not assume?</b> The last line matters most —
+       an ambiguous state must not be read as more certain than the evidence permits.</p>
+
+    <div class="tt"><h4><code>gateway_unreachable</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 1 could not reach Module 3 over the network (at start, or mid-run).</dd>
+      <dt>Module 1 knows</dt><dd>The network call failed. If it failed at start, no run was created on the Gateway.</dd>
+      <dt>Do</dt><dd>Check <code>MOD3_BASE_URL</code>, the Gateway, and the network path, then start a fresh run.</dd>
+      <dt>Don't assume</dt><dd>That the package failed validation — nothing was tested. This is inconclusive.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>start_rejected</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 3 declined the ValidationRequest at start; the Gateway's reason is shown verbatim.</dd>
+      <dt>Module 1 knows</dt><dd>No run was created on the Gateway. The rejection is the Gateway's decision, recorded as-is.</dd>
+      <dt>Do</dt><dd>Read the reason, correct the request/package/environment it points to, and start a fresh run.</dd>
+      <dt>Don't assume</dt><dd>That the package is bad — a rejected start says nothing about the knowledge's quality.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>gateway_http_error</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 3 returned a persistent HTTP error (e.g. a 5xx). A transient 5xx is retried a
+        small fixed number of times within the run deadline before this is recorded.</dd>
+      <dt>Module 1 knows</dt><dd>The Gateway responded, but not with something usable, and retries did not clear it.</dd>
+      <dt>Do</dt><dd>Check Gateway health/logs; once it is healthy, start a fresh run.</dd>
+      <dt>Don't assume</dt><dd>A verdict about the package. This is a transport/server condition, not test evidence.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>protocol_error</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 3 sent something that broke the contract — malformed JSON, a schema-invalid
+        event/result, or a sequence anomaly (gap, duplicate, out-of-order).</dd>
+      <dt>Module 1 knows</dt><dd>It stopped at the first violation rather than accepting suspect data. The recorded
+        payload shows what was received.</dd>
+      <dt>Do</dt><dd>Share the recorded payload with the Gateway owner; start a fresh run once resolved.</dd>
+      <dt>Don't assume</dt><dd>Any partial events “counted”. An interrupted, contract-violating stream is inconclusive.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>request_invalid</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 1's own outbound ValidationRequest failed schema validation, so it was <b>not sent</b>.</dd>
+      <dt>Module 1 knows</dt><dd>Nothing left Module 1; Module 3 was never contacted. The validation errors are recorded.</dd>
+      <dt>Do</dt><dd>This usually indicates a package/task data issue surfaced during assembly — fix it and retry. If it
+        persists with valid inputs, report it (it may be a Module 1 defect).</dd>
+      <dt>Don't assume</dt><dd>That the Gateway rejected anything — it never saw the request.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>timed_out</code></h4><dl>
+      <dt>What happened?</dt><dd>Module 1's authoritative run deadline (the Gateway's execution budget plus a small
+        guard) expired before completion. Module 1 recorded the timeout and sent a best-effort cleanup cancellation.</dd>
+      <dt>Module 1 knows</dt><dd>A run exists on the Gateway; Module 1 simply stopped waiting. It did not receive a result.</dd>
+      <dt>Do</dt><dd>Investigate why the task ran long; start a fresh run if you still need the result.</dd>
+      <dt>Don't assume</dt><dd>That the remote work stopped. A timeout is Module 1 ceasing to wait, not proof the Gateway halted.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>start_unresolved</code></h4><dl>
+      <dt>What happened?</dt><dd>The Workbench was interrupted around start; on recovery it cannot tell whether Module 3
+        accepted the start request.</dd>
+      <dt>Module 1 knows</dt><dd>A local attempt exists; whether a remote run was created is genuinely unknown. Module 1
+        will <b>not</b> retry, because retrying could create duplicate execution.</dd>
+      <dt>Do</dt><dd>Start a <b>fresh</b> validation run — it gets a new <code>run_id</code> and is a new attempt, not a
+        retry of this one.</dd>
+      <dt>Don't assume</dt><dd>That the original attempt did nothing. Because the contract provides no idempotent start or
+        lookup, an orphaned execution <b>may still be running</b> until the Gateway reclaims it; marking this attempt
+        terminal resolves Module 1's ambiguity, not the remote work.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Cancellation-delivery states (<code>unknown</code> / <code>undelivered</code> / <code>rejected</code> / <code>acknowledged</code>)</h4><dl>
+      <dt>What happened?</dt><dd>You requested a cancellation; the state describes what Module 1 learned about
+        <b>delivering</b> it — see <a href="#cancellation">§13</a>.</dd>
+      <dt>Module 1 knows</dt><dd>Only the delivery outcome. Even <code>acknowledged</code> means the request was received,
+        not that the run stopped.</dd>
+      <dt>Do</dt><dd>For <code>undelivered</code>/<code>rejected</code>/<code>unknown</code>, you may Cancel again while the
+        run is non-terminal. For <code>acknowledged</code>, wait for the Gateway's cancelled result.</dd>
+      <dt>Don't assume</dt><dd>That the run is cancelled until the contract <code>cancelled</code> event/result arrives and
+        rule&nbsp;#1 applies.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Environment configuration failures (<code>unset</code> / <code>unreadable</code> / <code>empty</code> / <code>duplicate</code>)</h4><dl>
+      <dt>What happened?</dt><dd>The environment configuration is missing or invalid; the selector is replaced by a message
+        and new runs are blocked (fail-closed) — see <a href="#configuration">§16</a>.</dd>
+      <dt>Module 1 knows</dt><dd>Exactly which of the four conditions applies; for a duplicate, the physical file line numbers.</dd>
+      <dt>Do</dt><dd>Fix <code>WORKBENCH_ENVIRONMENTS_FILE</code> (set it, make it readable, add names, or remove the duplicate)
+        and reload — no restart needed.</dd>
+      <dt>Don't assume</dt><dd>That existing runs are affected. Configuration governs future selection only; history is untouched.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Environment no longer configured</h4><dl>
+      <dt>What happened?</dt><dd>A profile's stored environment is not in the current configured list.</dd>
+      <dt>Module 1 knows</dt><dd>The stored value verbatim (shown as context) and that it is no longer offered as a choice.</dd>
+      <dt>Do</dt><dd>Select a currently configured environment for the next run, or reconfigure the profile.</dd>
+      <dt>Don't assume</dt><dd>That historical runs using it are invalid — they remain fully readable and unchanged.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Unhealthy package / discovery problems (<code>missing</code> / <code>cycle</code> / <code>outside_root</code>)</h4><dl>
+      <dt>What happened?</dt><dd><b>Unhealthy</b>: the root/manifest/entry point could not be resolved at all. <b>Assembled
+        with problems</b>: assembly succeeded but discovery reported a broken link (<code>missing</code>), a circular
+        reference (<code>cycle</code>), or a link outside the package root (<code>outside_root</code>).</dd>
+      <dt>Module 1 knows</dt><dd>The specific fault and where; it kept the registration visible and did not invent content
+        or silently skip anything.</dd>
+      <dt>Do</dt><dd>Fix the package (see <a href="#authoring">§18</a>) and reload. A reported problem is a real problem to
+        correct, not a warning to tolerate.</dd>
+      <dt>Don't assume</dt><dd>That a partially-assembled package is complete — problems mean some intended knowledge may be
+        absent from the snapshot.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Task status: <code>not_validated</code> vs <code>revalidation_required</code></h4><dl>
+      <dt>What happened?</dt><dd><code>not_validated</code>: the task has no runs at all under any context.
+        <code>revalidation_required</code>: it has runs, but none under the <b>current</b> validation context.</dd>
+      <dt>Module 1 knows</dt><dd>Whether any current-context evidence exists. Prior evidence still exists in history; it just
+        no longer qualifies.</dd>
+      <dt>Do</dt><dd>Start a run under the current context to produce qualifying evidence.</dd>
+      <dt>Don't assume</dt><dd>That <code>revalidation_required</code> means a past failure — the context simply changed.</dd>
+    </dl></div>
+
+    <div class="tt"><h4><code>needs_review</code></h4><dl>
+      <dt>What happened?</dt><dd>The run completed but Module 1 has no decisive machine evidence — no checks were declared
+        (rule 3) or a declared check did not run (rule 5).</dd>
+      <dt>Module 1 knows</dt><dd>Exactly which rule applied. It cannot mechanically decide pass/fail, and it will not guess.</dd>
+      <dt>Do</dt><dd>A named human records <code>passed</code>/<code>failed</code>; the resolution is kept distinct from the
+        machine verdict.</dd>
+      <dt>Don't assume</dt><dd>That it is a pass or a fail on its own — it is an explicit request for human judgement.</dd>
+    </dl></div>
+
+    <div class="tt"><h4>Current vs stale evidence</h4><dl>
+      <dt>What happened?</dt><dd>A run's validation context no longer equals the package's current one (§11).</dd>
+      <dt>Module 1 knows</dt><dd>The exact contexts it is comparing; the run's evidence is unchanged.</dd>
+      <dt>Do</dt><dd>Re-validate under the current context if you need qualifying evidence.</dd>
+      <dt>Don't assume</dt><dd>That a stale run was wrong or has been rewritten — only its <em>current</em> qualification changed.</dd>
+    </dl></div>
+  </section>
+
+  <section class="card" id="authoring">
+    <h2>18. Package-authoring best practices</h2>
+    <p class="prose">This section helps you prepare packages the Workbench can validate. Each statement is labelled
+       <span class="tag-fact">Workbench-enforced</span> (the implementation requires it),
+       <span class="tag-limit">Current limitation</span> (a known present-day constraint, not a promise of future
+       change), or <span class="tag-practice">Recommended practice</span> (authoring judgement). The authoritative
+       format specification is <code>workbench/PACKAGE_FORMAT.md</code>; this is orientation, not a second spec.</p>
+    <ul class="rlist">
+      <li><span class="tag-fact">Workbench-enforced</span> A package is a root folder with a <code>package.yaml</code>
+          declaring a required <code>package_id</code> (lowercase letters, digits, single hyphens — no spaces),
+          <code>entry_point</code>, and <code>tasks</code> directory. The manifest is structural config: it is excluded
+          from assembled knowledge, never crosses Module 2, and never enters any fingerprint.</li>
+      <li><span class="tag-fact">Workbench-enforced</span> From the entry point, knowledge is discovered via
+          front-matter <code>dependencies</code> and relative Markdown links, followed recursively. The assembled order
+          is entry-first then the rest sorted, so <b>resolution does not depend on link/file order</b> — a reference to
+          a file that sorts later resolves normally, and is not a problem in itself.</li>
+      <li><span class="tag-fact">Workbench-enforced</span> Discovery problems are reported, never invented or silently
+          skipped. Treat each as a correction to make, not a tolerable warning:
+          <ul class="rlist">
+            <li><code>missing</code> — a referenced <code>.md</code> file was not found. Fix the link target or add the file.</li>
+            <li><code>cycle</code> — files reference each other in a loop. Restructure so the dependency graph is acyclic.</li>
+            <li><code>outside_root</code> — a link resolves outside the package root, and is refused. If the material is
+                genuinely part of the package, bring it inside the root and reference it consistently within the package
+                boundary; if it is not, remove the link. Do not normalise an external reference as an ignorable warning.</li>
+          </ul></li>
+      <li><span class="tag-practice">Recommended practice</span> Write acceptance criteria that are answerable from the
+          package alone; prefer a small number of well-shaped tasks over many thin ones.</li>
+      <li><span class="tag-practice">Recommended practice</span> An honest <code>checks: []</code> (no mechanical
+          verification) is preferable to a meaningless check. It yields <code>needs_review</code> (rule 3), which
+          correctly asks for human judgement rather than manufacturing a machine pass.</li>
+      <li><span class="tag-practice">Recommended practice</span> Remember that editing package content changes the
+          package fingerprint and editing a task changes its fingerprint — either makes prior approval evidence
+          no-longer-current, requiring re-validation (§11). Plan edits with that in mind.</li>
+      <li><span class="tag-limit">Current limitation</span> Relative Markdown links are matched literally: a link written
+          with a percent-encoded space (<code>%20</code>) is looked up as a literal <code>%20</code> filename and reported
+          <code>missing</code>. Prefer paths and folder names without spaces today. This is a current limitation, not a
+          documented future behaviour, and is not changed here.</li>
+      <li><span class="tag-limit">Current limitation</span> The ADLC/front-matter handling has a known unresolved issue;
+          it is described as a current limitation only and is not addressed by this guide.</li>
+    </ul>
+  </section>
+
+  <section class="card" id="operator-best-practices">
+    <h2>19. Operator best practices</h2>
+    <ul class="rlist">
+      <li>Configure the validation profile before running — Module 1 will not manufacture a context, and runs are
+          blocked until you do.</li>
+      <li>Read <code>inconclusive</code> and <code>needs_review</code> honestly: neither counts for or against the
+          package. Do not treat an inconclusive run as a failure or a pass.</li>
+      <li>Never infer that remote work stopped from <code>start_unresolved</code> or <code>timed_out</code>; start a
+          fresh run rather than assuming.</li>
+      <li>Use environment/capability <b>overrides</b> deliberately — they are experiments that never qualify as current
+          approval evidence.</li>
+      <li>After editing a package or task, re-validate the affected tasks before relying on approval; a moved folder
+          (Change root) alone does not require re-validation.</li>
+      <li>Approval is explicit and yours to give — confirm the package shows <b>Approved · current</b>, not merely
+          “Approval recorded”, before treating a package as approved.</li>
+    </ul>
+    <p class="prose muted">See also <code>workbench/PACKAGE_FORMAT.md</code> (package format),
+       <code>workbench/REQUIREMENTS_CLARIFICATIONS.md</code> (settled interpretations, open Gateway-owner questions, and
+       recorded operator-experience findings), and the repository <code>README.md</code> (install and launch).</p>
   </section>
 {% endblock %}

@@ -139,3 +139,22 @@ ul.rlist.mono li { font-family: SFMono-Regular, Consolas, monospace; font-size: 
 .diag-head { font-weight: 800; font-size: 14px; }
 .diag-head .interp { display: block; font-size: 11px; font-weight: 600; color: #6b7280;
                      text-transform: none; letter-spacing: 0; margin-top: 2px; }
+
+/* ---- Help / operator guide: table of contents + troubleshooting entries ---- */
+section[id] { scroll-margin-top: 12px; }
+.help-toc { columns: 2; column-gap: 28px; margin: 6px 0 2px; }
+.help-toc a { display: block; padding: 2px 0; font-size: 13px; break-inside: avoid; }
+.help-toc .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) { .help-toc { columns: 1; } }
+.tt { border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 8px;
+      padding: 10px 12px; margin: 10px 0; background: #fff; }
+.tt h4 { margin: 0 0 6px; font-size: 13px; }
+.tt h4 code { font-size: 12px; }
+.tt dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; }
+.tt dt { font-weight: 700; font-size: 12px; color: #57606a; white-space: nowrap; }
+.tt dd { margin: 0; font-size: 13px; color: #40484f; }
+.tag-fact, .tag-limit, .tag-practice { display: inline-block; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .03em; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line); }
+.tag-fact { background: var(--okbg); color: var(--ok); border-color: var(--okbd); }
+.tag-limit { background: var(--warnbg); color: var(--warn); border-color: var(--warnbd); }
+.tag-practice { background: #eef2f7; color: #476085; border-color: #c3d0e0; }

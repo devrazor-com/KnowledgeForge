@@ -76,6 +76,18 @@ environment marker, so the same file is correct on both OSes.
    git diff --cached --name-only
    ```
 
+8. **Help is part of the operator-facing contract.** Any change that adds, removes,
+   renames or materially alters an operator-visible field, action, status, error,
+   workflow or interpretation **must update the relevant Help content
+   (`workbench/templates/help.html`) in the same change set**. A feature that changes
+   operator-visible behaviour is incomplete until its Help is updated. The Help ↔ code
+   coupling has a cheap mechanical backstop — `workbench/tests/test_help_http.py`
+   asserts every machine-defined outcome/error/cancel-delivery token (`workbench/vocab.py`),
+   the required section anchors, and the key operator concepts are present, and guards
+   against presenting frozen future Gateway behaviour as current. Extend those structural
+   assertions when you add operator-visible vocabulary or a Help section; prose quality
+   stays owned by human review, not by brittle sentence-level tests.
+
 ---
 
 # Transferring the Workbench from macOS to Windows

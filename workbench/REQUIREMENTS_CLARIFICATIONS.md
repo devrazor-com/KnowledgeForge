@@ -790,3 +790,54 @@ codebase, one launch command, one explicit Selector event loop) and deployment-c
 Module 3 environment selection are accepted on macOS and Windows. Subsequent Module 1 work
 divides into **operator experience** and **contract-required Module 3 integration behaviour**,
 not further foundation development.
+
+## Operator-experience findings — observed current UI limitations (not defects fixed here)
+
+Recorded during the Help / Operator Guide inventory. These are **observed current UI
+limitations**, deliberately **out of scope** for the Help change set (which documents current
+behaviour, it does not change product behaviour). They are **not product defects being fixed**,
+and recording them here is **not a promise of future implementation** — they are candidates to
+weigh in a later operator-experience change set.
+
+1. **`revalidation_required` has no explanatory affordance in the UI.** The package detail
+   tasks table renders the badge *“re-validation required”* (`status.py` → `package_status`
+   status `revalidation_required`) but nothing on the page explains that it means *“runs exist,
+   but none under the current validation context,”* as distinct from `not_validated` (*never
+   run*). The distinction is now documented in operator Help (§17), but the UI itself gives no
+   inline hint.
+2. **History surfaces cancellation-delivery information only tersely.** `history.html` shows a
+   requested cancellation as a small muted sub-line (`cancel: <delivery>`) under the outcome
+   cell, without the fuller operator wording the Run screen carries
+   (`orchestrator.CANCEL_DELIVERY_MESSAGES`). A reader scanning history sees the raw delivery
+   token but not what it establishes (e.g. that `acknowledged` ≠ cancelled).
+
+Both are legitimate to leave as-is for now; neither blocks any current workflow. If revisited,
+that work must also update Help in the same change set (see `VERIFY.md`, item 8).
+
+## Help entries requiring review when Module 3 start/reconciliation behaviour changes
+
+**Inherited checklist for the upcoming Sadia start/reconciliation contract change set.** Operator
+Help (`workbench/templates/help.html`) documents today's behaviour for the topics below. When the
+Module 3 start/reconciliation contract behaviour changes, each of these Help topics must be
+re-examined **in that same change set** and updated if its current wording becomes stale. This
+list exists so that future change inherits an explicit set of Help material to reconsider rather
+than relying on someone to remember which paragraphs went stale.
+
+- **§17 troubleshooting — `start_unresolved`** (and the matching Run-screen guidance in
+  `static/app.js`): today Module 1 records the ambiguity and will not retry. Revisit when
+  **read-only reconciliation of ambiguous starts through `events`/`result`** is implemented.
+- **§17 troubleshooting — `start_rejected`**: today a Gateway start rejection is recorded verbatim
+  with "no run was created." Revisit when **409 duplicate-`run_id` interpretation** is added.
+- **§17 troubleshooting — `gateway_http_error`** and any wording about the **current start-5xx
+  retry behaviour** (§17 notes "a transient 5xx is retried a small fixed number of times within
+  the run deadline"). Revisit if the **start-5xx retry policy** changes.
+- **§13 cancellation — cancel-delivery `acknowledged` semantics**: revisit alongside any
+  reconciliation change that lets Module 1 learn more about a cancelled run's true state.
+- **§14 recovery and reattachment**: the reattachment cases described are today's behaviour;
+  revisit if reconciliation changes what recovery can determine or do.
+
+**Explicitly still frozen — do NOT pre-document in Help:** 409 duplicate-`run_id` interpretation;
+read-only reconciliation of ambiguous starts through `events`/`result`; any future start-5xx
+retry policy; **`/alive`** (no current Module 1 behaviour — it must not appear in Help at all).
+`test_help_http.py::test_help_excludes_frozen_future_gateway_topics` guards `/alive` and `409`
+against accidental appearance.
