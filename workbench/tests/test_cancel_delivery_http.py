@@ -433,3 +433,34 @@ def test_cancel_5xx_sends_exactly_one_physical_request(tmp_path):
         _stop(wb)
     finally:
         _stop(mock)
+
+
+def test_cancel_unaffected_by_environment_removal(tmp_path):
+    """Configuration governs only NEW runs. A run already in flight under an environment
+    that is then removed from the current configured list must remain cancellable through
+    the existing cancel path — the cancel gate is not the environment gate. Proved at the
+    physical mechanism (mock CANCELS), not just the UI."""
+    mock_port, wb_port = _free_port(), _free_port()
+    dbpath = tmp_path / "wb.db"
+    envfile = tmp_path / "environments.txt"
+    envfile.write_text("larkspur-sandbox\nclaims-sandbox\n", encoding="utf-8")
+    env = _wb_env(mock_port, dbpath)
+    env["WORKBENCH_ENVIRONMENTS_FILE"] = str(envfile)   # controlled config we can edit mid-test
+    mock = _start("tools.mock_gateway.app:app", mock_port, env)
+    wb = _start("workbench.app:app", wb_port, env)
+    try:
+        assert _wait_ready(mock_port) and _wait_ready(wb_port)
+        run_id = _post_run(wb_port, forced="success", fault="never_terminal")   # started under larkspur-sandbox
+        _poll(wb_port, run_id, lambda v: v["run_state"] == "running" and v["events"], timeout=15)
+        # Remove the run's environment from the CURRENT configuration.
+        envfile.write_text("claims-sandbox\n", encoding="utf-8")
+
+        r = _cancel(wb_port, run_id)                       # existing cancel path — not env-gated
+        assert r["delivery"] == "acknowledged"             # Gateway received the cancel
+        assert _mock_info(mock_port)["cancels"].get(run_id, 0) >= 1   # a physical cancel was sent
+        v = _poll(wb_port, run_id, lambda v: v["run_state"] == "terminal", timeout=15)
+        assert v["run_state"] == "terminal" and v["outcome"] == "cancelled"   # rule #1, still completes
+        assert v["target_environment"] == "larkspur-sandbox"                  # stored value unchanged
+        _stop(wb)
+    finally:
+        _stop(mock)

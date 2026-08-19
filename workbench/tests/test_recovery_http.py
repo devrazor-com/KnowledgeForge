@@ -414,3 +414,34 @@ def test_recovery_is_interruptible_double_kill(tmp_path):
         _stop(wb3)
     finally:
         _stop(mock)
+
+
+def test_recovery_unaffected_by_environment_removal(tmp_path):
+    """Configuration governs only NEW runs. Removing a run's environment from the current
+    configured list mid-flight must not strand it: recovery reattaches to the SAME Gateway
+    run (never a second start) and it completes normally. `start_run` is the only
+    environment gate; `recover_inflight_runs`/`_poll` must not consult config.environments()."""
+    mock_port, wb_port = _free_port(), _free_port()
+    dbpath = tmp_path / "wb.db"
+    envfile = tmp_path / "environments.txt"
+    envfile.write_text("larkspur-sandbox\nclaims-sandbox\n", encoding="utf-8")
+    env = _wb_env(mock_port, dbpath)
+    env["WORKBENCH_ENVIRONMENTS_FILE"] = str(envfile)   # controlled config we can edit mid-test
+    mock = _start("tools.mock_gateway.app:app", mock_port, env)
+    wb1 = _start("workbench.app:app", wb_port, env)
+    try:
+        assert _wait_ready(mock_port) and _wait_ready(wb_port)
+        run_id = _post_run(wb_port, forced="success")   # started under larkspur-sandbox
+        _poll(wb_port, run_id, lambda v: v["run_state"] == "running" and len(v["events"]) >= 2, timeout=15)
+        # Remove the run's environment from the CURRENT configuration, then crash+recover.
+        envfile.write_text("claims-sandbox\n", encoding="utf-8")
+        _stop(wb1)
+        wb2 = _start("workbench.app:app", wb_port, env)
+        assert _wait_ready(wb_port)
+        v = _poll(wb_port, run_id, lambda v: v["run_state"] in ("terminal", "error"), timeout=30)
+        assert v["run_state"] == "terminal" and v["outcome"] == "passed"   # reattached and completed
+        assert v["target_environment"] == "larkspur-sandbox"               # stored value unchanged
+        assert _mock_info(mock_port)["starts"].get(run_id) == 1            # exactly one start; no re-issue
+        _stop(wb2)
+    finally:
+        _stop(mock)

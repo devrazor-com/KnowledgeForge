@@ -1,9 +1,22 @@
 <form method="post" action="/packages/{{ src.id }}/profile" class="run-grid">
   <div class="field">
     <label>Target environment</label>
-    <select name="environment" required>
-      {% for e in environments %}<option value="{{ e }}"{% if profile and e == profile.target_environment %} selected{% endif %}>{{ e }}</option>{% endfor %}
-    </select>
+    {% if env_config_error %}
+      <div class="notice-bad">{{ env_config_error }}</div>
+    {% else %}
+      {# Pre-select the stored env only if it is still configured; otherwise render a
+         disabled placeholder so `required` blocks submission until the operator chooses —
+         the browser must not manufacture a choice by defaulting to the first option. #}
+      {% set env_current = profile.target_environment if (profile and profile.target_environment in environments) else None %}
+      <select name="environment" required>
+        {% if not env_current %}<option value="" disabled selected>Select an environment</option>{% endif %}
+        {% for e in environments %}<option value="{{ e }}"{% if e == env_current %} selected{% endif %}>{{ e }}</option>{% endfor %}
+      </select>
+      {% if profile and profile.target_environment not in environments %}
+        <div class="muted">Stored profile environment <code>{{ profile.target_environment }}</code> is
+          <b>no longer configured</b>; select a currently configured environment to save.</div>
+      {% endif %}
+    {% endif %}
   </div>
   <div class="field">
     <label>Permitted capabilities</label>
@@ -19,5 +32,5 @@
     <input type="text" name="configured_by" value="{{ profile.configured_by if profile and profile.configured_by else '' }}"
            placeholder="e.g. victor" style="font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:7px"/>
   </div>
-  <div class="field" style="align-self:end"><button type="submit" class="primary">Save profile</button></div>
+  <div class="field" style="align-self:end"><button type="submit" class="primary"{% if env_config_error %} disabled{% endif %}>Save profile</button></div>
 </form>

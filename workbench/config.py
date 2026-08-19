@@ -23,8 +23,10 @@ DATA_DIR = BASE_DIR / "data"
 
 DEFAULT_MOD3_BASE_URL = "http://127.0.0.1:8003"
 
-# Execution conditions offered when starting a run.
-ENVIRONMENTS = ["larkspur-sandbox", "claims-sandbox"]
+# Permitted capabilities are Module 1's OWN vocabulary (not owned by Module 3), so they
+# stay a fixed in-code list. Target environments are different: Module 3 owns and
+# publishes the accepted logical environment names, so they are deployment configuration
+# (see environments() below), never a baked-in product list.
 CAPABILITIES = ["filesystem", "shell", "database-read", "web-search"]
 
 CONTRACT_VERSION = "0.1"
@@ -39,6 +41,61 @@ _TRUE = {"1", "true", "yes", "on"}
 def mod3_base_url() -> str:
     """Where Module 3 lives. The one setting that changes for the real Gateway."""
     return os.environ.get("MOD3_BASE_URL", DEFAULT_MOD3_BASE_URL).rstrip("/")
+
+
+class EnvironmentsConfigError(Exception):
+    """The selectable Module 3 target environments are unconfigured or invalid. `kind`
+    is one of 'unset' | 'unreadable' | 'empty' | 'duplicate'. `message` is operator-facing
+    (no filesystem path or internal detail — those go to the server log only)."""
+
+    def __init__(self, kind: str, message: str):
+        super().__init__(message)
+        self.kind = kind
+        self.message = message
+
+
+def environments() -> list[str]:
+    """The configured selectable Module 3 target-environment names, read FRESH each call
+    (no cache) from the UTF-8 file named by WORKBENCH_ENVIRONMENTS_FILE — so an edit takes
+    effect without a restart. Module 3 owns these logical names; Module 1 only presents
+    them and sends the selected one verbatim (no mapping/normalisation/discovery).
+
+    Fail-closed: there is NO synthetic fallback. Raises EnvironmentsConfigError when the
+    configuration is unset / unreadable / empty / has a duplicate. Parsing is the fixed
+    cross-platform contract: utf-8-sig (tolerates a Windows BOM), splitlines (LF/CRLF),
+    strip each line (file syntax only — never touches the name's internal characters),
+    ignore blank lines and full-line `#` comments, reject duplicates. Names are returned
+    verbatim, in file order."""
+    path = os.environ.get("WORKBENCH_ENVIRONMENTS_FILE")
+    if not path or not path.strip():
+        raise EnvironmentsConfigError("unset",
+            "No target environments are configured. Set WORKBENCH_ENVIRONMENTS_FILE to a "
+            "UTF-8 text file listing the accepted Module 3 environment names, one per line.")
+    try:
+        text = Path(path).read_text(encoding="utf-8-sig")
+    except OSError:
+        raise EnvironmentsConfigError("unreadable",
+            "The target-environment configuration file could not be read. Check that "
+            "WORKBENCH_ENVIRONMENTS_FILE points to an existing, readable file.") from None
+    names: list[str] = []
+    first_seen: dict[str, int] = {}
+    for lineno, raw in enumerate(text.splitlines(), start=1):   # PHYSICAL file line number
+        line = raw.strip()
+        if not line or line.startswith("#"):                    # blank / full-line comment
+            continue
+        if line in first_seen:
+            raise EnvironmentsConfigError("duplicate",
+                f"The target-environment configuration file has a duplicate entry "
+                f"'{line}' (line {lineno}; first seen at line {first_seen[line]}). "
+                f"Each environment name must appear once.")
+        first_seen[line] = lineno
+        names.append(line)
+    if not names:
+        raise EnvironmentsConfigError("empty",
+            "The target-environment configuration file contains no environment names. "
+            "Add one accepted Module 3 environment name per line (blank and #-comment "
+            "lines are ignored).")
+    return names
 
 
 def db_path() -> Path:

@@ -19,6 +19,11 @@ from workbench import config, db, orchestrator
 
 def _setup_larkspur_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("WORKBENCH_DB", str(tmp_path / "wb.db"))
+    # larkspur-sandbox must be a currently-configured environment so start_run's env gate
+    # is satisfied and execution reaches the (patched) start call being measured.
+    envfile = tmp_path / "environments.txt"
+    envfile.write_text("larkspur-sandbox\n", encoding="utf-8")
+    monkeypatch.setenv("WORKBENCH_ENVIRONMENTS_FILE", str(envfile))
     monkeypatch.setattr(orchestrator, "RETRY_DELAY", 0)   # count is what matters; keep it fast
     db.init()
     db.set_validation_profile("larkspur", "larkspur-sandbox", ["filesystem"], "test")

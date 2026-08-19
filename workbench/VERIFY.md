@@ -139,7 +139,13 @@ the Workbench before zipping.)
    workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
    ```
 4. **Point at the Gateway:** `$env:MOD3_BASE_URL = "https://<gateway-host>:<port>"`
-   (or the dev mock's URL). This is the only application setting.
+   (or the dev mock's URL).
+4b. **Configure target environments:** copy `workbench\environments.example.txt` to a
+   machine-local file (convention `workbench\local\environments.txt`, git-ignored, separate
+   from `workbench\data\`), edit it with the names your Module 3 accepts (one per line), and
+   set `$env:WORKBENCH_ENVIRONMENTS_FILE = "<that path>"`. Without a valid file the Workbench
+   still starts but shows an actionable message and blocks runs (fail-closed, no synthetic
+   fallback); edits are picked up without a restart.
 5. **Run the tests** to confirm the transfer is sound — expect all pass with a small
    number **skipped** (the POSIX-signal tests):
    ```powershell

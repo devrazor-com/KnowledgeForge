@@ -72,9 +72,10 @@
   <!-- Validation profile (3C-3): the package's canonical validation context. -->
   <section class="card">
     <h2>Validation profile</h2>
+    {% if env_config_error %}<div class="notice-bad">{{ env_config_error }}</div>{% endif %}
     {% if profile %}
       <table class="kv">
-        <tr><td>Target environment</td><td class="fp">{{ profile.target_environment }}</td></tr>
+        <tr><td>Target environment</td><td class="fp">{{ profile.target_environment }}{% if not env_config_error and profile.target_environment not in environments %} <span class="badge warn">no longer configured</span>{% endif %}</td></tr>
         <tr><td>Permitted capabilities</td><td>{% for c in profile.capabilities %}<span class="cap-badge">{{ c }}</span> {% endfor %}{% if not profile.capabilities %}<span class="muted">none</span>{% endif %}</td></tr>
         <tr><td>Configured</td><td class="muted">{{ profile.updated_at[:19]|replace('T',' ') }}{% if profile.configured_by %} · by {{ profile.configured_by }}{% endif %}</td></tr>
       </table>
@@ -92,12 +93,20 @@
 
   <section class="card run-start">
     <h2>Start a validation run</h2>
-    {% if not profile %}
+    {% if env_config_error %}
+      <div class="notice-bad">{{ env_config_error }} Runs are unavailable until target environments
+         are configured.</div>
+    {% elif not profile %}
       <div class="empty">Runs are unavailable until a validation profile is configured above
          (no profile, no run).</div>
     {% elif not tasks %}
       <div class="empty">No tasks in <code>{{ src.tasks_rel }}</code>.</div>
     {% else %}
+    {% if profile.target_environment not in environments %}
+      <div class="notice-bad">The profile's target environment <code>{{ profile.target_environment }}</code>
+         is <b>no longer configured</b>. Select a currently configured environment below (or reconfigure the
+         profile) before starting a run — historical runs and evidence using it remain readable unchanged.</div>
+    {% endif %}
     <form method="post" action="/runs">
       <input type="hidden" name="source_id" value="{{ src.id }}"/>
       <div class="run-grid">
@@ -109,8 +118,13 @@
         </div>
         <div class="field">
           <label>Target environment <span class="muted">(profile default)</span></label>
+          {# Default to the profile env only if it is still configured; otherwise a
+             disabled placeholder forces an explicit choice ({% required %}) rather than the
+             browser silently defaulting to the first option. Obsolete env is NOT offered. #}
+          {% set env_current = profile.target_environment if profile.target_environment in environments else None %}
           <select name="environment" required>
-            {% for e in environments %}<option value="{{ e }}"{% if e == profile.target_environment %} selected{% endif %}>{{ e }}{% if e == profile.target_environment %} — profile default{% endif %}</option>{% endfor %}
+            {% if not env_current %}<option value="" disabled selected>Select an environment</option>{% endif %}
+            {% for e in environments %}<option value="{{ e }}"{% if e == env_current %} selected{% endif %}>{{ e }}{% if e == env_current %} — profile default{% endif %}</option>{% endfor %}
           </select>
         </div>
         {% if dev_mock %}

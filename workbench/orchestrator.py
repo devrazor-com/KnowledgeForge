@@ -246,6 +246,22 @@ async def start_run(root: Path, key: str, registered_package_id: str | None, tas
         raise ValueError(
             "This package has no validation profile configured. Configure its target "
             "environment and permitted capabilities before starting a validation run.")
+
+    # New-run environment gate. The environment to be SENT must be in the CURRENT
+    # configured list, read FRESH here (authoritative at start time). This runs BEFORE any
+    # local run row (create_run) or physical POST (_gw_call(start)) — so an unconfigured
+    # environment yields zero Module 3 start requests and no persisted run. Configuration
+    # governs FUTURE runs only: this gate is never consulted by recovery, polling, result
+    # retrieval, or cancellation of runs that already exist.
+    try:
+        allowed_environments = config.environments()
+    except config.EnvironmentsConfigError as e:
+        raise ValueError(e.message) from None
+    if environment not in allowed_environments:
+        raise ValueError(
+            f"Target environment '{environment}' is not in the current configured list. "
+            f"Select a currently configured environment before starting a run.")
+
     task = next((t for t in load_tasks(root / assembly.tasks_rel) if t.id == task_id), None)
     if task is None:
         raise ValueError(f"Unknown task '{task_id}' in package '{key}'")

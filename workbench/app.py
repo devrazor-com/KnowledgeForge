@@ -227,11 +227,21 @@ def _package_context(source_id_: str):
 @app.get("/packages/{source_id_}")
 def package_detail(request: Request, source_id_: str):
     _src, view, profile, tasks, pstat, newly_stored = _package_context(source_id_)
+    # Selectable environments come from configuration (Module 3 owns the names). If the
+    # configuration is unset/invalid we render an actionable message instead of a dropdown
+    # and disable configuring/starting — rather than inventing a synthetic list. Rendering
+    # is informational only; the authoritative read is at each state-changing POST.
+    try:
+        environments = config.environments()
+        env_config_error = None
+    except config.EnvironmentsConfigError as e:
+        environments = []
+        env_config_error = e.message
     return templates.TemplateResponse(request, "package_detail.html", {
         "src": view, "assembly": view["assembly"], "package": view["assembly"].package if view["assembly"] else None,
         "tasks": tasks, "newly_stored": newly_stored, "profile": profile, "pstat": pstat,
-        "capabilities": config.CAPABILITIES, "environments": config.ENVIRONMENTS,
-        "dev_mock": config.dev_mock_mode(),
+        "capabilities": config.CAPABILITIES, "environments": environments,
+        "env_config_error": env_config_error, "dev_mock": config.dev_mock_mode(),
     }, headers=_NO_STORE)
 
 
@@ -242,8 +252,15 @@ def configure_profile(source_id_: str, environment: str = Form(...),
     package_id = src.get("package_id")
     if not package_id:
         raise HTTPException(400, "This source has no valid package identity; fix the package first.")
-    if environment not in config.ENVIRONMENTS:
-        raise HTTPException(400, f"Unknown target environment '{environment}'.")
+    # Reread the configured list HERE (authoritative at the state-changing request), not
+    # the list captured when the form was rendered.
+    try:
+        allowed = config.environments()
+    except config.EnvironmentsConfigError as e:
+        raise HTTPException(400, e.message)
+    if environment not in allowed:
+        raise HTTPException(400, f"Target environment '{environment}' is not in the current "
+                                 f"configured list.")
     caps = [c for c in capabilities if c in config.CAPABILITIES]
     db.set_validation_profile(package_id, environment, caps, (configured_by or "").strip() or None)
     return RedirectResponse(url=f"/packages/{source_id_}", status_code=303)

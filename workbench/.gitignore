@@ -7,3 +7,7 @@ __pycache__/
 /data/
 *.db
 *.sqlite3
+# Machine-local deployment configuration (e.g. the target-environments file). Named
+# `local/` (not `config/`) to avoid any ambiguity with the config.py module. Kept
+# SEPARATE from /data/ so resetting runtime state never deletes deployment config.
+/local/

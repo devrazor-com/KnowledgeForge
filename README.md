@@ -70,6 +70,18 @@ on another host is one environment variable — e.g. `https://gateway.internal:8
 (DNS, firewall/proxy egress, VPN and — for an internal-CA HTTPS Gateway — trusting that
 CA in the OS trust store are network-environment concerns, not application settings.)
 
+**Target environments are configuration, not code.** Module 3 owns and publishes the
+accepted logical environment names; Module 1 presents the list you configure and sends the
+selected value verbatim. Point **`WORKBENCH_ENVIRONMENTS_FILE`** at a machine-local UTF-8
+text file with one accepted name per line (blank and `#`-comment lines ignored; duplicates
+are an error). Copy [`workbench/environments.example.txt`](workbench/environments.example.txt)
+to a local, git-ignored path — the convention is **`workbench/local/environments.txt`**
+(kept separate from the disposable `workbench/data/`, so resetting the DB never deletes your
+deployment config) — and edit it with the names your Gateway accepts. It is fail-closed: with
+no valid configuration the environment selector shows an actionable message and runs are
+blocked (no synthetic fallback), and the file is reread on demand (no restart needed after an
+edit). Changing the accepted list is a config edit, never a code change or release.
+
 **Start Module 1 the same way on every platform: `python -m workbench.run_workbench`.**
 It selects the asyncio Selector event loop internally (on Windows this avoids the default
 Proactor loop's accept-loop failure — see `workbench/REQUIREMENTS_CLARIFICATIONS.md`,
@@ -83,6 +95,7 @@ Proactor loop's accept-loop failure — see `workbench/REQUIREMENTS_CLARIFICATIO
 python3.12 -m venv workbench/.venv
 ./workbench/.venv/bin/pip install -r workbench/requirements.txt   # or requirements.lock for the exact pinned closure
 export MOD3_BASE_URL=http://127.0.0.1:8003        # or the real Gateway URL
+export WORKBENCH_ENVIRONMENTS_FILE="$PWD/workbench/local/environments.txt"   # cp workbench/environments.example.txt there first
 ./workbench/.venv/bin/python -m workbench.run_workbench
 # tests:
 ./workbench/.venv/bin/python -m pytest workbench/tests -q
@@ -98,6 +111,7 @@ how environment variables are set — the launch command is the same.
 py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt   # or requirements.lock
 $env:MOD3_BASE_URL = "http://127.0.0.1:8003"      # or the real Gateway URL
+$env:WORKBENCH_ENVIRONMENTS_FILE = "$PWD\workbench\local\environments.txt"   # copy workbench\environments.example.txt there first
 workbench\.venv\Scripts\python -m workbench.run_workbench
 # tests:
 workbench\.venv\Scripts\python -m pytest workbench\tests -q
@@ -108,6 +122,7 @@ workbench\.venv\Scripts\python -m pytest workbench\tests -q
 py -3.12 -m venv workbench\.venv
 workbench\.venv\Scripts\python -m pip install -r workbench\requirements.txt
 set MOD3_BASE_URL=http://127.0.0.1:8003
+set WORKBENCH_ENVIRONMENTS_FILE=%CD%\workbench\local\environments.txt
 workbench\.venv\Scripts\python -m workbench.run_workbench
 ```
 `$env:MOD3_BASE_URL` (PowerShell) and `set MOD3_BASE_URL=` (cmd) each set the variable

@@ -1,0 +1,20 @@
+# Example target-environment configuration for the Validation Workbench (a TEMPLATE).
+#
+# Copy this to a machine-local file that is NOT disposable runtime state — the
+# recommended convention is:  workbench/local/environments.txt  (git-ignored, separate
+# from workbench/data/ so resetting the DB never deletes your deployment config) — and
+# point the environment variable at it:
+#     macOS/Linux:  export WORKBENCH_ENVIRONMENTS_FILE=".../workbench/local/environments.txt"
+#     Windows:      set WORKBENCH_ENVIRONMENTS_FILE=C:\...\workbench\local\environments.txt
+#
+# One accepted Module 3 environment name per line. Module 3 OWNS and publishes these
+# logical names; Module 1 only presents them and sends the selected one VERBATIM (no
+# mapping, normalisation, or discovery, and Module 3 need not be reachable to render them).
+# Blank lines and full-line '#' comments are ignored. A duplicate name is a configuration
+# error. Names are used exactly as written — no case-folding or aliasing.
+#
+# The two names below are SYNTHETIC development/test names. Replace them with the names
+# your Module 3 Gateway actually accepts — that edit is deployment configuration, not a
+# source-code change.
+larkspur-sandbox
+claims-sandbox

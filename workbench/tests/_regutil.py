@@ -43,10 +43,30 @@ _SERVERS: dict[int, tuple[subprocess.Popen, str]] = {}
 READY_TIMEOUT = 45.0
 STOP_TIMEOUT = 10.0
 
+# Synthetic target-environment configuration for the harness. Module 1 is fail-closed:
+# it reads its selectable environments from WORKBENCH_ENVIRONMENTS_FILE (no baked-in
+# fallback), so every child server needs one. start_server injects this default file
+# unless the test already set WORKBENCH_ENVIRONMENTS_FILE (the config-specific tests do).
+_DEFAULT_ENVIRONMENTS = ("larkspur-sandbox", "claims-sandbox")
+_default_environments_file: str | None = None
+
+
+def default_environments_file() -> str:
+    """Path to a lazily-created temp file holding the synthetic harness environments."""
+    global _default_environments_file
+    if _default_environments_file is None:
+        f = tempfile.NamedTemporaryFile(prefix="kf-environments-", suffix=".txt",
+                                        delete=False, mode="w", encoding="utf-8")
+        f.write("\n".join(_DEFAULT_ENVIRONMENTS) + "\n")
+        f.close()
+        _default_environments_file = f.name
+    return _default_environments_file
+
 
 def start_server(module: str, port: int, env: dict, cwd: str | None = None) -> subprocess.Popen:
     """Launch a uvicorn app as a child process, capturing its stdout+stderr to a temp
     file so a startup crash can be reported. Registers it by port for wait_ready."""
+    env.setdefault("WORKBENCH_ENVIRONMENTS_FILE", default_environments_file())
     log = tempfile.NamedTemporaryFile(
         prefix=f"kf-server-{port}-", suffix=".log", delete=False)
     log_path = log.name
